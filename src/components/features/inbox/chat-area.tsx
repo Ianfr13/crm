@@ -1,8 +1,8 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { uazapiClient } from '@/lib/api/uazapi-client'
-import { Send, Loader2, Phone, Video, MoreVertical } from 'lucide-react'
+import { Send, Loader2, Phone, Video, MoreVertical, Check, CheckCheck, Clock } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
@@ -20,35 +20,30 @@ interface Message {
   sender_type: string
   sender_id?: string
   created_at: string
+  status?: 'pending' | 'sent' | 'delivered' | 'read' | 'failed'
   attachments?: any[]
 }
 
 interface ChatAreaProps {
   conversation: Conversation
+  messages: Message[]
+  loading: boolean
   onStatusChange: (id: string, status: string) => void
+  onSendMessage: (text: string) => Promise<void>
 }
 
-export function ChatArea({ conversation, onStatusChange }: ChatAreaProps) {
-  const [messages, setMessages] = useState<Message[]>([])
-  const [loading, setLoading] = useState(true)
+export function ChatArea({ conversation, messages, loading, onStatusChange, onSendMessage }: ChatAreaProps) {
   const [sending, setSending] = useState(false)
   const [messageText, setMessageText] = useState('')
+  const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+  }
 
   useEffect(() => {
-    loadMessages()
-  }, [conversation.id])
-
-  const loadMessages = async () => {
-    try {
-      setLoading(true)
-      // Carregar mensagens localmente ou da API
-      setMessages([])
-    } catch (error) {
-      console.error('Erro ao carregar mensagens:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
+    scrollToBottom()
+  }, [messages])
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -56,17 +51,7 @@ export function ChatArea({ conversation, onStatusChange }: ChatAreaProps) {
 
     try {
       setSending(true)
-      const contact = conversation.contact
-      if (contact?.phone) {
-        await uazapiClient.messages.sendText(contact.phone, messageText)
-      }
-      const newMessage = {
-        id: Date.now().toString(),
-        content: messageText,
-        sender_type: 'user',
-        created_at: new Date().toISOString(),
-      }
-      setMessages([...messages, newMessage])
+      await onSendMessage(messageText)
       setMessageText('')
     } catch (error) {
       console.error('Erro ao enviar mensagem:', error)
@@ -155,16 +140,30 @@ export function ChatArea({ conversation, onStatusChange }: ChatAreaProps) {
                 <p className="text-gray-900 dark:text-white break-words">
                   {message.content}
                 </p>
-                <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                <p className="text-xs text-gray-500 dark:text-gray-500 mt-1 flex items-center justify-end gap-1">
                   {formatDistanceToNow(new Date(message.created_at), {
                     addSuffix: false,
                     locale: ptBR,
                   })}
+                  {message.sender_type === 'user' && (
+                    <span className="ml-1">
+                        {message.status === 'read' ? (
+                            <CheckCheck className="h-3 w-3 text-blue-500" />
+                        ) : message.status === 'delivered' ? (
+                            <CheckCheck className="h-3 w-3 text-gray-500" />
+                        ) : message.status === 'sent' ? (
+                            <Check className="h-3 w-3 text-gray-500" />
+                        ) : (
+                            <Clock className="h-3 w-3 text-gray-400" />
+                        )}
+                    </span>
+                  )}
                 </p>
               </div>
             </div>
           ))
         )}
+        <div ref={messagesEndRef} />
       </div>
 
       {/* Input */}

@@ -22,7 +22,7 @@ export class UazapiClient {
   private adminToken?: string;
 
   constructor(config: UazapiClientConfig) {
-    this.baseUrl = config.baseUrl.replace(/\/$/, '');
+    this.baseUrl = config.baseUrl;
     this.instanceToken = config.instanceToken;
     this.adminToken = config.adminToken;
   }
@@ -34,7 +34,6 @@ export class UazapiClient {
     useAdminToken: boolean = false
   ): Promise<ApiResponse<T>> {
     try {
-      console.log(`[UazapiClient] Request: ${method} ${this.baseUrl}${path}`);
       const headers: HeadersInit = {
         'Content-Type': 'application/json',
       };
@@ -64,6 +63,7 @@ export class UazapiClient {
           data,
         };
       }
+
       return {
         success: true,
         data,
@@ -76,7 +76,7 @@ export class UazapiClient {
     }
   }
 
-  // ==================== ADMINISTRAÇÃO ===================
+  // ==================== ADMINISTRAÇÃO ====================
 
   async createInstance(name: string, systemName?: string, adminField01?: string, adminField02?: string): Promise<ApiResponse> {
     return this.request('POST', '/instance/init', {
@@ -88,497 +88,468 @@ export class UazapiClient {
   }
 
   async listInstances(): Promise<ApiResponse> {
-    return this.request('GET', '/instance/all', undefined, true);
+    return this.request('GET', '/instance/list', undefined, true);
   }
 
   async updateAdminFields(instanceName: string, adminField01?: string, adminField02?: string): Promise<ApiResponse> {
-    return this.request('POST', '/instance/updateAdminFields', {
-      id: instanceName,
+    return this.request('POST', '/instance/update', {
+      instanceName,
       adminField01,
       adminField02,
     }, true);
   }
 
   async getGlobalWebhook(): Promise<ApiResponse> {
-    return this.request('GET', '/globalwebhook', undefined, true);
+    return this.request('GET', '/webhook/global', undefined, true);
   }
 
   async configureGlobalWebhook(url: string, events: string[]): Promise<ApiResponse> {
-    return this.request('POST', '/globalwebhook', {
+    return this.request('POST', '/webhook/global', {
       url,
       events,
     }, true);
   }
 
-  // ==================== INSTANCIA ===================
+  // ==================== INSTANCIA ====================
 
-  async connectInstance(instanceName: string, phone?: string): Promise<ApiResponse> {
-    console.log(`[UazapiClient] Connecting instance: ${instanceName}, Phone: ${phone}`);
-    const response = await this.request('POST', '/instance/connect', { phone });
-    console.log(`[UazapiClient] Connect response:`, JSON.stringify(response));
-    return response;
+  async connectInstance(instanceName: string): Promise<ApiResponse> {
+    return this.request('POST', `/instance/${instanceName}/connect`);
   }
 
   async disconnectInstance(instanceName: string): Promise<ApiResponse> {
-    return this.request('POST', '/instance/disconnect');
+    return this.request('POST', `/instance/${instanceName}/disconnect`);
   }
 
   async getInstanceStatus(instanceName: string): Promise<ApiResponse> {
-    const response = await this.request('GET', '/instance/status');
-    console.log(`[UazapiClient] Status response for ${instanceName}:`, JSON.stringify(response));
-    return response;
+    return this.request('GET', `/instance/${instanceName}/status`);
   }
 
   async updateInstanceName(instanceName: string, newName: string): Promise<ApiResponse> {
-    return this.request('POST', '/instance/updateInstanceName', { name: newName });
+    return this.request('POST', `/instance/${instanceName}/name`, { newName });
   }
 
   async deleteInstance(instanceName: string): Promise<ApiResponse> {
-    return this.request('DELETE', '/instance');
+    return this.request('DELETE', `/instance/${instanceName}`);
   }
 
   async getPrivacySettings(instanceName: string): Promise<ApiResponse> {
-    return this.request('GET', '/instance/privacy');
+    return this.request('GET', `/instance/${instanceName}/privacy`);
   }
 
   async updatePrivacySettings(instanceName: string, settings: any): Promise<ApiResponse> {
-    return this.request('POST', '/instance/privacy', settings);
+    return this.request('POST', `/instance/${instanceName}/privacy`, settings);
   }
 
   async updatePresenceStatus(instanceName: string, status: string): Promise<ApiResponse> {
-    return this.request('POST', '/instance/presence', { presence: status });
+    return this.request('POST', `/instance/${instanceName}/presence`, { status });
   }
 
-  async updateChatbotSettings(instanceName: string, settings: any): Promise<ApiResponse> {
-    return this.request('POST', '/instance/updatechatbotsettings', settings);
-  }
-
-  async updateFieldsMap(instanceName: string, fields: any): Promise<ApiResponse> {
-    return this.request('POST', '/instance/updateFieldsMap', fields);
-  }
-
-  // ==================== PERFIL ===================
+  // ==================== PERFIL ====================
 
   async getProfile(instanceName: string): Promise<ApiResponse> {
-    return { success: false, error: 'Not implemented in this version' };
+    return this.request('GET', `/instance/${instanceName}/profile`);
   }
 
   async updateProfile(instanceName: string, profile: any): Promise<ApiResponse> {
-    if (profile.name) {
-      return this.request('POST', '/profile/name', { name: profile.name });
-    }
-    return { success: false, error: 'Update profile image not fully implemented' };
+    return this.request('POST', `/instance/${instanceName}/profile`, profile);
   }
 
-  // ==================== CHAMADAS ===================
+  // ==================== CHAMADAS ====================
 
   async listCalls(instanceName: string): Promise<ApiResponse> {
-    return { success: false, error: 'Not implemented in this version' };
+    return this.request('GET', `/instance/${instanceName}/calls`);
   }
 
   async rejectCall(instanceName: string, callId: string): Promise<ApiResponse> {
-    return this.request('POST', '/call/reject', { id: callId });
+    return this.request('POST', `/instance/${instanceName}/calls/${callId}/reject`);
   }
 
-  // ==================== WEBHOOKS E SSE ===================
+  // ==================== WEBHOOKS E SSE ====================
 
   async getWebhook(instanceName: string): Promise<ApiResponse> {
-    return this.request('GET', '/webhook');
+    return this.request('GET', `/instance/${instanceName}/webhook`);
   }
 
   async configureWebhook(instanceName: string, url: string, events: string[]): Promise<ApiResponse> {
-    return this.request('POST', '/webhook', { url, events });
+    return this.request('POST', `/instance/${instanceName}/webhook`, { url, events });
   }
 
   async connectSSE(instanceName: string): Promise<ApiResponse> {
-    return this.request('GET', '/sse');
+    return this.request('GET', `/instance/${instanceName}/sse`);
   }
 
-  // ==================== ENVIAR MENSAGEM ===================
+  // ==================== ENVIAR MENSAGEM ====================
 
   async sendText(instanceName: string, number: string, message: string): Promise<ApiResponse> {
-    return this.request('POST', '/send/text', {
+    return this.request('POST', `/instance/${instanceName}/message/send`, {
       number,
-      text: message,
+      message,
     });
   }
 
   async sendImage(instanceName: string, number: string, imageUrl: string, caption?: string): Promise<ApiResponse> {
-    return this.request('POST', '/send/media', {
+    return this.request('POST', `/instance/${instanceName}/message/send-image`, {
       number,
-      type: 'image',
-      file: imageUrl,
-      text: caption,
+      imageUrl,
+      caption,
     });
   }
 
   async sendDocument(instanceName: string, number: string, documentUrl: string, filename?: string): Promise<ApiResponse> {
-    return this.request('POST', '/send/media', {
+    return this.request('POST', `/instance/${instanceName}/message/send-document`, {
       number,
-      type: 'document',
-      file: documentUrl,
-      docName: filename,
+      documentUrl,
+      filename,
     });
   }
 
   async sendAudio(instanceName: string, number: string, audioUrl: string): Promise<ApiResponse> {
-    return this.request('POST', '/send/media', {
+    return this.request('POST', `/instance/${instanceName}/message/send-audio`, {
       number,
-      type: 'audio',
-      file: audioUrl,
+      audioUrl,
     });
   }
 
   async sendVideo(instanceName: string, number: string, videoUrl: string, caption?: string): Promise<ApiResponse> {
-    return this.request('POST', '/send/media', {
+    return this.request('POST', `/instance/${instanceName}/message/send-video`, {
       number,
-      type: 'video',
-      file: videoUrl,
-      text: caption,
+      videoUrl,
+      caption,
     });
   }
 
   async sendLocation(instanceName: string, number: string, latitude: number, longitude: number, label?: string): Promise<ApiResponse> {
-    return this.request('POST', '/send/location', {
+    return this.request('POST', `/instance/${instanceName}/message/send-location`, {
       number,
       latitude,
       longitude,
-      name: label,
+      label,
     });
   }
 
   async sendContact(instanceName: string, number: string, contact: any): Promise<ApiResponse> {
-    return this.request('POST', '/send/contact', {
+    return this.request('POST', `/instance/${instanceName}/message/send-contact`, {
       number,
-      ...contact
+      contact,
     });
   }
 
   async sendList(instanceName: string, number: string, list: any): Promise<ApiResponse> {
-    return this.request('POST', '/send/menu', {
+    return this.request('POST', `/instance/${instanceName}/message/send-list`, {
       number,
-      type: 'list',
-      ...list
+      list,
     });
   }
 
   async sendButtons(instanceName: string, number: string, message: string, buttons: any[]): Promise<ApiResponse> {
-    return this.request('POST', '/send/menu', {
+    return this.request('POST', `/instance/${instanceName}/message/send-buttons`, {
       number,
-      type: 'button',
-      text: message,
-      choices: buttons
+      message,
+      buttons,
     });
   }
 
   async sendTemplate(instanceName: string, number: string, templateId: string, parameters?: any[]): Promise<ApiResponse> {
-    return { success: false, error: 'Template sending not fully supported in this version' };
+    return this.request('POST', `/instance/${instanceName}/message/send-template`, {
+      number,
+      templateId,
+      parameters,
+    });
   }
 
   async sendPoll(instanceName: string, number: string, question: string, options: string[]): Promise<ApiResponse> {
-    return this.request('POST', '/send/menu', {
+    return this.request('POST', `/instance/${instanceName}/message/send-poll`, {
       number,
-      type: 'poll',
-      text: question,
-      choices: options
+      question,
+      options,
     });
   }
 
-  // ==================== AÇÕES NA MENSAGEM E BUSCAR ===================
+  // ==================== AÇÕES NA MENSAGEM E BUSCAR ====================
 
   async reactToMessage(instanceName: string, messageId: string, emoji: string): Promise<ApiResponse> {
-    return this.request('POST', '/message/react', { id: messageId, text: emoji });
+    return this.request('POST', `/instance/${instanceName}/message/${messageId}/react`, { emoji });
   }
 
   async editMessage(instanceName: string, messageId: string, newMessage: string): Promise<ApiResponse> {
-    return this.request('POST', '/message/edit', { id: messageId, text: newMessage });
+    return this.request('POST', `/instance/${instanceName}/message/${messageId}/edit`, { newMessage });
   }
 
   async deleteMessage(instanceName: string, messageId: string): Promise<ApiResponse> {
-    return this.request('POST', '/message/delete', { id: messageId });
+    return this.request('POST', `/instance/${instanceName}/message/${messageId}/delete`);
   }
 
   async forwardMessage(instanceName: string, messageId: string, targetNumber: string): Promise<ApiResponse> {
-    return { success: false, error: 'Forward message not implemented directly' };
+    return this.request('POST', `/instance/${instanceName}/message/${messageId}/forward`, { targetNumber });
   }
 
   async searchMessages(instanceName: string, query: string, limit?: number): Promise<ApiResponse> {
-    return { success: false, error: 'Search by text query not directly supported' };
+    return this.request('GET', `/instance/${instanceName}/message/search?query=${query}&limit=${limit || 50}`);
   }
 
   async getMessageDetails(instanceName: string, messageId: string): Promise<ApiResponse> {
-    return this.request('POST', '/message/find', { id: messageId });
+    return this.request('GET', `/instance/${instanceName}/message/${messageId}`);
   }
 
-  // ==================== CHATS ===================
+  // ==================== CHATS ====================
 
   async listChats(instanceName: string): Promise<ApiResponse> {
-    return this.request('POST', '/chat/find', {});
+    return this.request('GET', `/instance/${instanceName}/chats`);
   }
 
-  async getMessages(instanceName: string, chatId: string, limit: number = 50): Promise<ApiResponse> {
-    return this.request('POST', '/message/find', { chatid: chatId, limit });
+  async getChat(instanceName: string, chatId: string): Promise<ApiResponse> {
+    return this.request('GET', `/instance/${instanceName}/chats/${chatId}`);
   }
 
   async archiveChat(instanceName: string, chatId: string): Promise<ApiResponse> {
-    return this.request('POST', '/chat/archive', { number: chatId, archive: true });
+    return this.request('POST', `/instance/${instanceName}/chats/${chatId}/archive`);
   }
 
   async unarchiveChat(instanceName: string, chatId: string): Promise<ApiResponse> {
-    return this.request('POST', '/chat/archive', { number: chatId, archive: false });
+    return this.request('POST', `/instance/${instanceName}/chats/${chatId}/unarchive`);
   }
 
   async muteChat(instanceName: string, chatId: string, duration?: number): Promise<ApiResponse> {
-    return this.request('POST', '/chat/mute', { number: chatId, muteEndTime: duration || 8 });
+    return this.request('POST', `/instance/${instanceName}/chats/${chatId}/mute`, { duration });
   }
 
   async unmuteChat(instanceName: string, chatId: string): Promise<ApiResponse> {
-    return this.request('POST', '/chat/mute', { number: chatId, muteEndTime: 0 });
+    return this.request('POST', `/instance/${instanceName}/chats/${chatId}/unmute`);
   }
 
-  // ==================== CONTATOS ===================
+  // ==================== CONTATOS ====================
 
   async listContacts(instanceName: string): Promise<ApiResponse> {
-    return this.request('GET', '/contacts');
+    return this.request('GET', `/instance/${instanceName}/contacts`);
   }
 
   async getContact(instanceName: string, contactId: string): Promise<ApiResponse> {
-    return this.request('POST', '/chat/details', { number: contactId });
+    return this.request('GET', `/instance/${instanceName}/contacts/${contactId}`);
   }
 
   async createContact(instanceName: string, contact: any): Promise<ApiResponse> {
-    return this.request('POST', '/contact/add', contact);
+    return this.request('POST', `/instance/${instanceName}/contacts`, contact);
   }
 
   async updateContact(instanceName: string, contactId: string, contact: any): Promise<ApiResponse> {
-    return { success: false, error: 'Update contact not supported' };
+    return this.request('POST', `/instance/${instanceName}/contacts/${contactId}`, contact);
   }
 
   async deleteContact(instanceName: string, contactId: string): Promise<ApiResponse> {
-    return this.request('POST', '/contact/remove', { phone: contactId });
+    return this.request('DELETE', `/instance/${instanceName}/contacts/${contactId}`);
   }
 
   async blockContact(instanceName: string, contactId: string): Promise<ApiResponse> {
-    return this.request('POST', '/chat/block', { number: contactId, block: true });
+    return this.request('POST', `/instance/${instanceName}/contacts/${contactId}/block`);
   }
 
-  // ==================== BLOQUEIOS ===================
+  // ==================== BLOQUEIOS ====================
 
   async listBlockedContacts(instanceName: string): Promise<ApiResponse> {
-    return this.request('GET', '/chat/blocklist');
+    return this.request('GET', `/instance/${instanceName}/blocked`);
   }
 
   async unblockContact(instanceName: string, contactId: string): Promise<ApiResponse> {
-    return this.request('POST', '/chat/block', { number: contactId, block: false });
+    return this.request('POST', `/instance/${instanceName}/blocked/${contactId}/unblock`);
   }
 
-  // ==================== ETIQUETAS ===================
+  // ==================== ETIQUETAS ====================
 
   async listLabels(instanceName: string): Promise<ApiResponse> {
-    return this.request('GET', '/labels');
+    return this.request('GET', `/instance/${instanceName}/labels`);
   }
 
   async createLabel(instanceName: string, label: string, color?: string): Promise<ApiResponse> {
-    return { success: false, error: 'Create label not confirmed in spec' };
+    return this.request('POST', `/instance/${instanceName}/labels`, { label, color });
   }
 
   async addLabelToMessage(instanceName: string, labelId: string, messageId: string): Promise<ApiResponse> {
-    return { success: false, error: 'Add label to message not supported' };
+    return this.request('POST', `/instance/${instanceName}/labels/${labelId}/add`, { messageId });
   }
 
-  // ==================== GRUPOS E COMUNIDADES ===================
+  // ==================== GRUPOS E COMUNIDADES ====================
 
   async listGroups(instanceName: string): Promise<ApiResponse> {
-    return this.request('GET', '/group/list');
+    return this.request('GET', `/instance/${instanceName}/groups`);
   }
 
   async getGroup(instanceName: string, groupId: string): Promise<ApiResponse> {
-    return this.request('POST', '/group/info', { groupjid: groupId });
+    return this.request('GET', `/instance/${instanceName}/groups/${groupId}`);
   }
 
   async createGroup(instanceName: string, subject: string, participants: string[]): Promise<ApiResponse> {
-    return this.request('POST', '/group/create', { name: subject, participants });
+    return this.request('POST', `/instance/${instanceName}/groups`, { subject, participants });
   }
 
   async updateGroup(instanceName: string, groupId: string, updates: any): Promise<ApiResponse> {
-    if (updates.name) return this.request('POST', '/group/updateName', { groupjid: groupId, name: updates.name });
-    if (updates.description) return this.request('POST', '/group/updateDescription', { groupjid: groupId, description: updates.description });
-    return { success: false, error: 'Update type not supported' };
+    return this.request('POST', `/instance/${instanceName}/groups/${groupId}`, updates);
   }
 
   async deleteGroup(instanceName: string, groupId: string): Promise<ApiResponse> {
-    return { success: false, error: 'Delete group not supported' };
+    return this.request('DELETE', `/instance/${instanceName}/groups/${groupId}`);
   }
 
   async leaveGroup(instanceName: string, groupId: string): Promise<ApiResponse> {
-    return this.request('POST', '/group/leave', { groupjid: groupId });
+    return this.request('POST', `/instance/${instanceName}/groups/${groupId}/leave`);
   }
 
   async addGroupMember(instanceName: string, groupId: string, number: string): Promise<ApiResponse> {
-    return this.request('POST', '/group/updateParticipants', { groupjid: groupId, action: 'add', participants: [number] });
+    return this.request('POST', `/instance/${instanceName}/groups/${groupId}/add`, { number });
   }
 
   async removeGroupMember(instanceName: string, groupId: string, number: string): Promise<ApiResponse> {
-    return this.request('POST', '/group/updateParticipants', { groupjid: groupId, action: 'remove', participants: [number] });
+    return this.request('POST', `/instance/${instanceName}/groups/${groupId}/remove`, { number });
   }
 
   async promoteGroupMember(instanceName: string, groupId: string, number: string): Promise<ApiResponse> {
-    return this.request('POST', '/group/updateParticipants', { groupjid: groupId, action: 'promote', participants: [number] });
+    return this.request('POST', `/instance/${instanceName}/groups/${groupId}/promote`, { number });
   }
 
   async demoteGroupMember(instanceName: string, groupId: string, number: string): Promise<ApiResponse> {
-    return this.request('POST', '/group/updateParticipants', { groupjid: groupId, action: 'demote', participants: [number] });
+    return this.request('POST', `/instance/${instanceName}/groups/${groupId}/demote`, { number });
   }
 
   async listGroupMembers(instanceName: string, groupId: string): Promise<ApiResponse> {
-    return this.request('POST', '/group/info', { groupjid: groupId });
+    return this.request('GET', `/instance/${instanceName}/groups/${groupId}/members`);
   }
 
   async getGroupInviteLink(instanceName: string, groupId: string): Promise<ApiResponse> {
-    return this.request('GET', `/group/invitelink/${groupId}`);
+    return this.request('GET', `/instance/${instanceName}/groups/${groupId}/invite`);
   }
 
   async revokeGroupInviteLink(instanceName: string, groupId: string): Promise<ApiResponse> {
-    return this.request('POST', '/group/resetInviteCode', { groupjid: groupId });
+    return this.request('POST', `/instance/${instanceName}/groups/${groupId}/invite/revoke`);
   }
 
   async createCommunity(instanceName: string, subject: string, description?: string): Promise<ApiResponse> {
-    return this.request('POST', '/community/create', { name: subject });
+    return this.request('POST', `/instance/${instanceName}/communities`, { subject, description });
   }
 
   async listCommunities(instanceName: string): Promise<ApiResponse> {
-    return this.request('GET', '/group/list');
+    return this.request('GET', `/instance/${instanceName}/communities`);
   }
 
   async addSubgroupToCommunity(instanceName: string, communityId: string, groupId: string): Promise<ApiResponse> {
-    return this.request('POST', '/community/editgroups', { community: communityId, action: 'add', groupjids: [groupId] });
+    return this.request('POST', `/instance/${instanceName}/communities/${communityId}/subgroups`, { groupId });
   }
 
   async removeSubgroupFromCommunity(instanceName: string, communityId: string, groupId: string): Promise<ApiResponse> {
-    return this.request('POST', '/community/editgroups', { community: communityId, action: 'remove', groupjids: [groupId] });
+    return this.request('POST', `/instance/${instanceName}/communities/${communityId}/subgroups/remove`, { groupId });
   }
 
-  // ==================== RESPOSTAS RÁPIDAS ===================
+  // ==================== RESPOSTAS RÁPIDAS ====================
 
   async listQuickReplies(instanceName: string): Promise<ApiResponse> {
-    return this.request('GET', '/quickreply/showall');
+    return this.request('GET', `/instance/${instanceName}/quick-replies`);
   }
 
   async createQuickReply(instanceName: string, trigger: string, response: string): Promise<ApiResponse> {
-    return this.request('POST', '/quickreply/edit', { shortCut: trigger, type: 'text', text: response });
+    return this.request('POST', `/instance/${instanceName}/quick-replies`, { trigger, response });
   }
 
-  // ==================== CRM ===================
+  // ==================== CRM ====================
 
   async listCrmContacts(instanceName: string): Promise<ApiResponse> {
-    return this.request('POST', '/chat/find', {});
+    return this.request('GET', `/instance/${instanceName}/crm/contacts`);
   }
 
   async createCrmContact(instanceName: string, contact: any): Promise<ApiResponse> {
-    return this.request('POST', '/chat/editLead', contact);
+    return this.request('POST', `/instance/${instanceName}/crm/contacts`, contact);
   }
 
-  // ==================== MENSAGEM EM MASSA ===================
+  // ==================== MENSAGEM EM MASSA ====================
 
   async sendBroadcast(instanceName: string, message: string, recipients: string[]): Promise<ApiResponse> {
-    return this.request('POST', '/sender/simple', { 
-        numbers: recipients,
-        type: 'text',
-        text: message,
-        folder: 'default',
-        delayMin: 1,
-        delayMax: 5,
-        scheduled_for: Date.now()
-    });
+    return this.request('POST', `/instance/${instanceName}/broadcast`, { message, recipients });
   }
 
   async getBroadcastStatus(instanceName: string, broadcastId: string): Promise<ApiResponse> {
-    return this.request('POST', '/sender/listmessages', { folder_id: broadcastId });
+    return this.request('GET', `/instance/${instanceName}/broadcast/${broadcastId}`);
   }
 
   async listBroadcasts(instanceName: string): Promise<ApiResponse> {
-    return this.request('GET', '/sender/listfolders');
+    return this.request('GET', `/instance/${instanceName}/broadcast`);
   }
 
   async cancelBroadcast(instanceName: string, broadcastId: string): Promise<ApiResponse> {
-    return this.request('POST', '/sender/edit', { folder_id: broadcastId, action: 'stop' });
+    return this.request('POST', `/instance/${instanceName}/broadcast/${broadcastId}/cancel`);
   }
 
   async pauseBroadcast(instanceName: string, broadcastId: string): Promise<ApiResponse> {
-    return this.request('POST', '/sender/edit', { folder_id: broadcastId, action: 'stop' });
+    return this.request('POST', `/instance/${instanceName}/broadcast/${broadcastId}/pause`);
   }
 
   async resumeBroadcast(instanceName: string, broadcastId: string): Promise<ApiResponse> {
-    return this.request('POST', '/sender/edit', { folder_id: broadcastId, action: 'continue' });
+    return this.request('POST', `/instance/${instanceName}/broadcast/${broadcastId}/resume`);
   }
 
   async getBroadcastStats(instanceName: string, broadcastId: string): Promise<ApiResponse> {
-    return this.request('POST', '/sender/listmessages', { folder_id: broadcastId });
+    return this.request('GET', `/instance/${instanceName}/broadcast/${broadcastId}/stats`);
   }
 
-  // ==================== INTEGRAÇÃO CHATWOOT ===================
+  // ==================== INTEGRAÇÃO CHATWOOT ====================
 
   async connectChatwoot(instanceName: string, config: any): Promise<ApiResponse> {
-    return this.request('PUT', '/chatwoot/config', { enabled: true, ...config });
+    return this.request('POST', `/instance/${instanceName}/chatwoot/connect`, config);
   }
 
   async disconnectChatwoot(instanceName: string): Promise<ApiResponse> {
-    return this.request('PUT', '/chatwoot/config', { enabled: false });
+    return this.request('POST', `/instance/${instanceName}/chatwoot/disconnect`);
   }
 
-  // ==================== PROXY ===================
+  // ==================== PROXY ====================
 
   async enableProxy(instanceName: string, proxyUrl: string): Promise<ApiResponse> {
-    return this.request('POST', '/instance/proxy', { enable: true, proxy_url: proxyUrl });
+    return this.request('POST', `/instance/${instanceName}/proxy/enable`, { proxyUrl });
   }
 
   async disableProxy(instanceName: string): Promise<ApiResponse> {
-    return this.request('DELETE', '/instance/proxy');
+    return this.request('POST', `/instance/${instanceName}/proxy/disable`);
   }
 
   async getProxyStatus(instanceName: string): Promise<ApiResponse> {
-    return this.request('GET', '/instance/proxy');
+    return this.request('GET', `/instance/${instanceName}/proxy/status`);
   }
 
-  // ==================== CHATBOT ===================
+  // ==================== CHATBOT ====================
 
   async createChatbot(instanceName: string, config: any): Promise<ApiResponse> {
-    return this.request('POST', '/agent/edit', { agent: config });
+    return this.request('POST', `/instance/${instanceName}/chatbot/create`, config);
   }
 
   async listChatbots(instanceName: string): Promise<ApiResponse> {
-    return this.request('GET', '/agent/list');
+    return this.request('GET', `/instance/${instanceName}/chatbot`);
   }
 
   async getChatbotDetails(instanceName: string, botId: string): Promise<ApiResponse> {
-    return { success: false, error: 'Get chatbot details not implemented' };
+    return this.request('GET', `/instance/${instanceName}/chatbot/${botId}`);
   }
 
   async updateChatbot(instanceName: string, botId: string, updates: any): Promise<ApiResponse> {
-    return this.request('POST', '/agent/edit', { id: botId, agent: updates });
+    return this.request('POST', `/instance/${instanceName}/chatbot/${botId}`, updates);
   }
 
   async deleteChatbot(instanceName: string, botId: string): Promise<ApiResponse> {
-    return this.request('POST', '/agent/edit', { id: botId, delete: true });
+    return this.request('DELETE', `/instance/${instanceName}/chatbot/${botId}`);
   }
 
   async enableChatbot(instanceName: string, botId: string): Promise<ApiResponse> {
-    return { success: false, error: 'Enable chatbot not directly supported' };
+    return this.request('POST', `/instance/${instanceName}/chatbot/${botId}/enable`);
   }
 
   async disableChatbot(instanceName: string, botId: string): Promise<ApiResponse> {
-    return { success: false, error: 'Disable chatbot not directly supported' };
+    return this.request('POST', `/instance/${instanceName}/chatbot/${botId}/disable`);
   }
 
   async trainChatbot(instanceName: string, botId: string, trainingData: any): Promise<ApiResponse> {
-    return this.request('POST', '/knowledge/edit', { knowledge: trainingData });
+    return this.request('POST', `/instance/${instanceName}/chatbot/${botId}/train`, trainingData);
   }
 
   async getChatbotLogs(instanceName: string, botId: string): Promise<ApiResponse> {
-    return { success: false, error: 'Get chatbot logs not implemented' };
+    return this.request('GET', `/instance/${instanceName}/chatbot/${botId}/logs`);
   }
 
-  // ==================== HELPER METHODS ===================
+  // ==================== HELPER METHODS ====================
 
   setInstanceToken(token: string): void {
     this.instanceToken = token;

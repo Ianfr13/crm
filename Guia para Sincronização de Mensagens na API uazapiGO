@@ -1,0 +1,108 @@
+# Guia para Sincronização de Mensagens na API uazapiGO
+
+Este guia detalha o processo para sincronizar todas as mensagens de um chat, tanto as históricas (antigas) quanto as novas (em tempo real), utilizando a API uazapiGO. O processo é dividido em duas etapas principais: a sincronização inicial do histórico e a recepção de novas mensagens em tempo real.
+
+## Etapa 1: Sincronização do Histórico de Mensagens (Mensagens Antigas)
+
+Para carregar o histórico de mensagens de uma conversa específica, você deve utilizar o endpoint `POST /message/find`. Este endpoint permite a busca paginada de mensagens, o que é essencial para carregar um grande volume de dados sem sobrecarregar o sistema.
+
+### Como Usar o Endpoint `POST /message/find`
+
+Você precisará fazer requisições repetidas a este endpoint, ajustando o parâmetro `offset` para navegar pelas páginas de resultados até que todas as mensagens tenham sido recuperadas.
+
+**Parâmetros Chave:**
+
+- **`chatid`**: O ID do chat do qual você deseja buscar as mensagens (ex: `5511999999999@s.whatsapp.net`).
+
+- **`limit`**: O número máximo de mensagens a serem retornadas por página (o padrão é 100).
+
+- **`offset`**: O ponto de partida para a busca. Para a primeira requisição, use `0`. Para as páginas seguintes, use o valor de `nextOffset` retornado na resposta anterior.
+
+**Exemplo de Requisição (Primeira Página):**
+
+```json
+{
+  "chatid": "5511999999999@s.whatsapp.net",
+  "limit": 100,
+  "offset": 0
+}
+```
+
+**Processo de Paginação:**
+
+1. Faça a primeira requisição com `offset: 0`.
+
+1. A resposta incluirá um lote de mensagens, a quantidade retornada (`returnedMessages`), o `offset` usado, um campo `hasMore` (booleano) e o `nextOffset` para a próxima página.
+
+1. Enquanto `hasMore` for `true`, continue fazendo novas requisições, usando o `nextOffset` da resposta anterior como o novo `offset`.
+
+1. Armazene as mensagens de cada página em seu banco de dados.
+
+1. Repita o processo até que `hasMore` seja `false`.
+
+## Etapa 2: Recebendo Novas Mensagens em Tempo Real
+
+Após sincronizar o histórico, você precisa de um mecanismo para receber novas mensagens assim que elas chegam. A API uazapiGO oferece duas abordagens para isso: **Webhooks** e **Server-Sent Events (SSE)**.
+
+### Opção A: Usando Webhooks
+
+Webhooks são a abordagem mais robusta e recomendada para ambientes de produção. Sua aplicação expõe uma URL e a API uazapiGO envia uma requisição (POST) para essa URL sempre que um novo evento ocorre.
+
+**Como Configurar um Webhook:**
+
+1. Utilize o endpoint `POST /webhook` (para uma instância específica) ou `POST /globalwebhook` (para todas as instâncias).
+
+1. No corpo da requisição, forneça a `url` do seu sistema que irá receber os eventos e a lista de `events` que você deseja monitorar.
+
+1. Para receber novas mensagens, você deve se inscrever nos eventos `messages` e `messages_update`. O evento `history` também pode ser útil para sincronização.
+
+**Exemplo de Configuração de Webhook:**
+
+```json
+{
+  "url": "https://seusistema.com/webhook/uazapi",
+  "events": ["messages", "messages_update", "history"],
+  "excludeMessages": ["wasSentByApi"] 
+}
+```
+
+> **Nota Importante:** É altamente recomendável usar o filtro `"excludeMessages": ["wasSentByApi"]` para evitar loops infinitos, onde sua aplicação recebe um evento de uma mensagem que ela mesma enviou e responde a ele, gerando um novo evento.
+
+### Opção B: Usando Server-Sent Events (SSE )
+
+SSE é uma alternativa mais simples que estabelece uma conexão HTTP persistente entre o seu cliente e o servidor da API. É ideal para testes rápidos ou aplicações onde a configuração de um webhook é complexa.
+
+**Como Usar o Endpoint ****`/sse`****:**
+
+1. Faça uma requisição GET para o endpoint `/sse`.
+
+1. Passe o seu `token` de instância e os `events` desejados como parâmetros na URL.
+
+1. Sua aplicação precisará manter essa conexão aberta e tratar os eventos à medida que eles chegam.
+
+**Exemplo de Conexão SSE (JavaScript):**
+
+```javascript
+const token = 'SEU_TOKEN_DE_INSTANCIA';
+const events = 'messages,messages_update,history';
+const eventSource = new EventSource(`/sse?token=${token}&events=${events}`);
+
+eventSource.onmessage = function(event) {
+  const data = JSON.parse(event.data);
+  console.log('Novo evento recebido:', data);
+  // Processe a nova mensagem aqui
+};
+
+eventSource.onerror = function(error) {
+  console.error('Erro na conexão SSE:', error);
+};
+```
+
+## Resumo do Fluxo de Sincronização Completa
+
+1. **Sincronização Histórica**: Use o endpoint `POST /message/find` com paginação para buscar e armazenar todas as mensagens antigas de um chat.
+
+1. **Sincronização em Tempo Real**: Escolha uma das abordagens (Webhook ou SSE) e configure-a para receber os eventos `messages` e `messages_update`.
+
+1. **Consolidação**: Ao receber uma nova mensagem em tempo real, adicione-a ao seu banco de dados local, garantindo que seu sistema esteja sempre sincronizado com o WhatsApp.
+

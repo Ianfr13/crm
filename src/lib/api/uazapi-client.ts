@@ -7,17 +7,33 @@ import { createClient } from '@/lib/supabase/client'
 
 const supabase = createClient()
 
-async function invokeFunction(functionName: string, action: string, body?: any) {
+async function invokeFunction(functionName: string, action: string, body?: any, method: 'POST' | 'GET' | 'DELETE' = 'POST') {
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Não autenticado')
 
-  const response = await supabase.functions.invoke(functionName, {
-    method: 'POST',
+  // Append action to the URL query parameters
+  // For GET requests, we also need to append body params as query params if they exist
+  let url = `${functionName}?action=${action}`
+  let requestBody = body
+
+  if (method === 'GET' && body) {
+    const params = new URLSearchParams(body)
+    url += `&${params.toString()}`
+    requestBody = undefined
+  }
+
+  const options: any = {
+    method,
     headers: {
       Authorization: `Bearer ${session.access_token}`,
     },
-    body: { action, ...body },
-  })
+  }
+
+  if (method !== 'GET' && requestBody) {
+    options.body = requestBody
+  }
+
+  const response = await supabase.functions.invoke(url, options)
 
   if (response.error) throw response.error
   return response.data
@@ -35,7 +51,7 @@ export const uazapiClient = {
       })
     },
     async listInstances() {
-      return invokeFunction('uazapi-admin', 'list_instances')
+      return invokeFunction('uazapi-admin', 'list_instances', {}, 'GET')
     },
     async updateAdminFields(adminField01?: string, adminField02?: string) {
       return invokeFunction('uazapi-admin', 'update_admin_fields', {
@@ -44,7 +60,7 @@ export const uazapiClient = {
       })
     },
     async getGlobalWebhook() {
-      return invokeFunction('uazapi-admin', 'get_global_webhook')
+      return invokeFunction('uazapi-admin', 'get_global_webhook', {}, 'GET')
     },
     async configureGlobalWebhook(url: string, events: string[]) {
       return invokeFunction('uazapi-admin', 'configure_global_webhook', {
@@ -56,23 +72,23 @@ export const uazapiClient = {
 
   // ==================== INSTÂNCIA ====================
   instance: {
-    async connectInstance(qrCode: string) {
-      return invokeFunction('uazapi-instance', 'connect_instance', { qr_code: qrCode })
+    async connectInstance(phone?: string) {
+      return invokeFunction('uazapi-instance', 'connect_instance', phone ? { phone } : undefined)
     },
-    async disconnectInstance() {
+    async disconnectInstance(instanceName?: string) {
       return invokeFunction('uazapi-instance', 'disconnect_instance')
     },
     async getInstanceStatus() {
-      return invokeFunction('uazapi-instance', 'get_instance_status')
+      return invokeFunction('uazapi-instance', 'get_instance_status', {}, 'GET')
     },
     async updateInstanceName(name: string) {
       return invokeFunction('uazapi-instance', 'update_instance_name', { name })
     },
     async deleteInstance() {
-      return invokeFunction('uazapi-instance', 'delete_instance')
+      return invokeFunction('uazapi-instance', 'delete_instance', {}, 'DELETE')
     },
     async getPrivacySettings() {
-      return invokeFunction('uazapi-instance', 'get_privacy_settings')
+      return invokeFunction('uazapi-instance', 'get_privacy_settings', {}, 'GET')
     },
     async updatePrivacySettings(settings: any) {
       return invokeFunction('uazapi-instance', 'update_privacy_settings', settings)
@@ -80,18 +96,24 @@ export const uazapiClient = {
     async updatePresenceStatus(status: string) {
       return invokeFunction('uazapi-instance', 'update_presence_status', { status })
     },
+    async updateChatbotSettings(settings: any) {
+      return invokeFunction('uazapi-instance', 'update_chatbot_settings', settings)
+    },
+    async updateFieldsMap(fields: any) {
+      return invokeFunction('uazapi-instance', 'update_fields_map', fields)
+    },
   },
 
   // ==================== PERFIL E CHAMADAS ====================
   profile: {
     async getProfile() {
-      return invokeFunction('uazapi-profile-calls', 'get_profile')
+      return invokeFunction('uazapi-profile-calls', 'get_profile', {}, 'GET')
     },
     async updateProfile(name: string, status: string) {
       return invokeFunction('uazapi-profile-calls', 'update_profile', { name, status })
     },
     async listCalls() {
-      return invokeFunction('uazapi-profile-calls', 'list_calls')
+      return invokeFunction('uazapi-profile-calls', 'list_calls', {}, 'GET')
     },
     async rejectCall(callId: string) {
       return invokeFunction('uazapi-profile-calls', 'reject_call', { call_id: callId })
@@ -101,7 +123,7 @@ export const uazapiClient = {
   // ==================== WEBHOOKS ====================
   webhooks: {
     async getWebhook() {
-      return invokeFunction('uazapi-webhooks', 'get_webhook')
+      return invokeFunction('uazapi-webhooks', 'get_webhook', {}, 'GET')
     },
     async configureWebhook(url: string, events: string[]) {
       return invokeFunction('uazapi-webhooks', 'configure_webhook', {
@@ -225,10 +247,16 @@ export const uazapiClient = {
   // ==================== CHATS ====================
   chats: {
     async listChats(limit?: number, offset?: number) {
-      return invokeFunction('uazapi-chats', 'list_chats', { limit, offset })
+      return invokeFunction('uazapi-chats', 'list_chats', { limit, offset }, 'GET')
+    },
+    async getMessages(chatId: string, limit: number = 50) {
+      return invokeFunction('uazapi-chats', 'get_messages', { chatId, limit }, 'POST')
+    },
+    async syncChats() {
+      return invokeFunction('uazapi-chats', 'sync_chats', {}, 'POST')
     },
     async getChat(chatId: string) {
-      return invokeFunction('uazapi-chats', 'get_chat', { chat_id: chatId })
+      return invokeFunction('uazapi-chats', 'get_chat', { chat_id: chatId }, 'GET')
     },
     async archiveChat(chatId: string) {
       return invokeFunction('uazapi-chats', 'archive_chat', { chat_id: chatId })
@@ -250,10 +278,10 @@ export const uazapiClient = {
   // ==================== CONTATOS ====================
   contacts: {
     async listContacts(limit?: number, offset?: number) {
-      return invokeFunction('uazapi-contacts', 'list_contacts', { limit, offset })
+      return invokeFunction('uazapi-contacts', 'list_contacts', { limit, offset }, 'GET')
     },
     async getContact(number: string) {
-      return invokeFunction('uazapi-contacts', 'get_contact', { number })
+      return invokeFunction('uazapi-contacts', 'get_contact', { number }, 'GET')
     },
     async createContact(name: string, number: string) {
       return invokeFunction('uazapi-contacts', 'create_contact', { name, number })
@@ -262,7 +290,7 @@ export const uazapiClient = {
       return invokeFunction('uazapi-contacts', 'update_contact', { number, name })
     },
     async deleteContact(number: string) {
-      return invokeFunction('uazapi-contacts', 'delete_contact', { number })
+      return invokeFunction('uazapi-contacts', 'delete_contact', { number }, 'DELETE')
     },
     async blockContact(number: string) {
       return invokeFunction('uazapi-contacts', 'block_contact', { number })
@@ -272,13 +300,13 @@ export const uazapiClient = {
   // ==================== BLOQUEIOS E ETIQUETAS ====================
   blocksLabels: {
     async listBlockedContacts() {
-      return invokeFunction('uazapi-blocks-labels', 'list_blocked_contacts')
+      return invokeFunction('uazapi-blocks-labels', 'list_blocked_contacts', {}, 'GET')
     },
     async unblockContact(number: string) {
       return invokeFunction('uazapi-blocks-labels', 'unblock_contact', { number })
     },
     async listLabels() {
-      return invokeFunction('uazapi-blocks-labels', 'list_labels')
+      return invokeFunction('uazapi-blocks-labels', 'list_labels', {}, 'GET')
     },
     async createLabel(name: string, color?: string) {
       return invokeFunction('uazapi-blocks-labels', 'create_label', {
@@ -297,13 +325,13 @@ export const uazapiClient = {
   // ==================== GRUPOS ====================
   groups: {
     async listGroups() {
-      return invokeFunction('uazapi-groups', 'list_groups')
+      return invokeFunction('uazapi-groups', 'list_groups', {}, 'GET')
     },
     async getGroup(groupId: string) {
-      return invokeFunction('uazapi-groups', 'get_group', { group_id: groupId })
+      return invokeFunction('uazapi-groups', 'get_group', { group_id: groupId }, 'GET')
     },
     async createGroup(name: string, members: string[]) {
-      return invokeFunction('uazapi-groups', 'create_group', { name, members })
+      return invokeFunction('uazapi-groups', 'create_group', { subject: name, participants: members })
     },
     async updateGroup(groupId: string, name: string) {
       return invokeFunction('uazapi-groups', 'update_group', {
@@ -312,7 +340,7 @@ export const uazapiClient = {
       })
     },
     async deleteGroup(groupId: string) {
-      return invokeFunction('uazapi-groups', 'delete_group', { group_id: groupId })
+      return invokeFunction('uazapi-groups', 'delete_group', { group_id: groupId }, 'DELETE')
     },
     async leaveGroup(groupId: string) {
       return invokeFunction('uazapi-groups', 'leave_group', { group_id: groupId })
@@ -344,12 +372,12 @@ export const uazapiClient = {
     async listGroupMembers(groupId: string) {
       return invokeFunction('uazapi-groups', 'list_group_members', {
         group_id: groupId,
-      })
+      }, 'GET')
     },
     async getGroupInviteLink(groupId: string) {
       return invokeFunction('uazapi-groups', 'get_group_invite_link', {
         group_id: groupId,
-      })
+      }, 'GET')
     },
     async revokeGroupInviteLink(groupId: string) {
       return invokeFunction('uazapi-groups', 'revoke_group_invite_link', {
@@ -360,7 +388,7 @@ export const uazapiClient = {
       return invokeFunction('uazapi-groups', 'create_community', { name })
     },
     async listCommunities() {
-      return invokeFunction('uazapi-groups', 'list_communities')
+      return invokeFunction('uazapi-groups', 'list_communities', {}, 'GET')
     },
     async addSubgroupToCommunity(communityId: string, groupId: string) {
       return invokeFunction('uazapi-groups', 'add_subgroup_to_community', {
@@ -379,7 +407,7 @@ export const uazapiClient = {
   // ==================== RESPOSTAS RÁPIDAS E CRM ====================
   quickCrm: {
     async listQuickReplies() {
-      return invokeFunction('uazapi-quick-crm', 'list_quick_replies')
+      return invokeFunction('uazapi-quick-crm', 'list_quick_replies', {}, 'GET')
     },
     async createQuickReply(title: string, message: string) {
       return invokeFunction('uazapi-quick-crm', 'create_quick_reply', {
@@ -388,7 +416,7 @@ export const uazapiClient = {
       })
     },
     async listCrmContacts() {
-      return invokeFunction('uazapi-quick-crm', 'list_crm_contacts')
+      return invokeFunction('uazapi-quick-crm', 'list_crm_contacts', {}, 'GET')
     },
     async createCrmContact(name: string, number: string, email?: string) {
       return invokeFunction('uazapi-quick-crm', 'create_crm_contact', {
@@ -410,10 +438,10 @@ export const uazapiClient = {
     async getBroadcastStatus(broadcastId: string) {
       return invokeFunction('uazapi-broadcast', 'get_broadcast_status', {
         broadcast_id: broadcastId,
-      })
+      }, 'GET')
     },
     async listBroadcasts() {
-      return invokeFunction('uazapi-broadcast', 'list_broadcasts')
+      return invokeFunction('uazapi-broadcast', 'list_broadcasts', {}, 'GET')
     },
     async cancelBroadcast(broadcastId: string) {
       return invokeFunction('uazapi-broadcast', 'cancel_broadcast', {
@@ -433,7 +461,7 @@ export const uazapiClient = {
     async getBroadcastStats(broadcastId: string) {
       return invokeFunction('uazapi-broadcast', 'get_broadcast_stats', {
         broadcast_id: broadcastId,
-      })
+      }, 'GET')
     },
   },
 
@@ -459,7 +487,7 @@ export const uazapiClient = {
       return invokeFunction('uazapi-proxy', 'disable_proxy')
     },
     async getProxyStatus() {
-      return invokeFunction('uazapi-proxy', 'get_proxy_status')
+      return invokeFunction('uazapi-proxy', 'get_proxy_status', {}, 'GET')
     },
   },
 
@@ -472,12 +500,12 @@ export const uazapiClient = {
       })
     },
     async listChatbots() {
-      return invokeFunction('uazapi-chatbot', 'list_chatbots')
+      return invokeFunction('uazapi-chatbot', 'list_chatbots', {}, 'GET')
     },
     async getChatbotDetails(chatbotId: string) {
       return invokeFunction('uazapi-chatbot', 'get_chatbot_details', {
         chatbot_id: chatbotId,
-      })
+      }, 'GET')
     },
     async updateChatbot(chatbotId: string, updates: any) {
       return invokeFunction('uazapi-chatbot', 'update_chatbot', {
@@ -488,7 +516,7 @@ export const uazapiClient = {
     async deleteChatbot(chatbotId: string) {
       return invokeFunction('uazapi-chatbot', 'delete_chatbot', {
         chatbot_id: chatbotId,
-      })
+      }, 'DELETE')
     },
     async enableChatbot(chatbotId: string) {
       return invokeFunction('uazapi-chatbot', 'enable_chatbot', {
@@ -509,7 +537,7 @@ export const uazapiClient = {
     async getChatbotLogs(chatbotId: string) {
       return invokeFunction('uazapi-chatbot', 'get_chatbot_logs', {
         chatbot_id: chatbotId,
-      })
+      }, 'GET')
     },
   },
 }

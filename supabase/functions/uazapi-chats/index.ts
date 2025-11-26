@@ -23,8 +23,70 @@ serve(async (req) => {
 
     // LIST CHATS
     if (method === 'GET' && action === 'list_chats') {
+      console.log(`[UazapiChats] Listing chats for instance: ${auth.instanceName}`);
       const result = await auth.uazapi.listChats(auth.instanceName);
+      console.log(`[UazapiChats] List chats result:`, JSON.stringify(result));
       return successResponse(result, result.success ? 200 : 400);
+    }
+
+    // GET MESSAGES
+    if (method === 'POST' && action === 'get_messages') {
+      const { chatId, limit } = await req.json();
+      console.log(`[UazapiChats] Getting messages for chat: ${chatId}, instance: ${auth.instanceName}`);
+      const result = await auth.uazapi.getMessages(auth.instanceName, chatId, limit);
+      console.log(`[UazapiChats] Get messages result:`, JSON.stringify(result));
+      return successResponse(result, result.success ? 200 : 400);
+    }
+
+    // SYNC CHATS
+    if (method === 'POST' && action === 'sync_chats') {
+      console.log(`[UazapiChats] Syncing chats for instance: ${auth.instanceName}`);
+      const result = await auth.uazapi.listChats(auth.instanceName);
+
+      if (result.success && Array.isArray(result.data)) {
+        const chats = result.data;
+        const supabase = auth.supabase;
+
+        for (const chat of chats) {
+          // 1. Upsert Contact
+          const phone = chat.id.split('@')[0];
+          const name = chat.name || chat.wa_name || chat.wa_contactName || phone;
+
+          const { data: contact, error: contactError } = await supabase
+            .from('contacts')
+            .upsert({
+              name: name,
+              phone: phone,
+              owner_id: auth.user.id
+            }, { onConflict: 'phone' })
+            .select()
+            .single();
+
+          if (contactError) {
+            console.error('Error syncing contact:', contactError);
+            continue;
+          }
+
+          // 2. Upsert Conversation
+          const { error: convError } = await supabase
+            .from('conversations')
+            .upsert({
+              contact_id: contact.id,
+              user_id: auth.user.id,
+              channel: 'whatsapp',
+              status: 'open',
+              unread_count: chat.wa_unreadCount || 0,
+              last_message_at: chat.wa_lastMsgTimestamp ? new Date(chat.wa_lastMsgTimestamp * 1000).toISOString() : new Date().toISOString(),
+              metadata: chat
+            }, { onConflict: 'contact_id' }); // Assuming unique constraint on contact_id per user? Or just contact_id.
+
+          if (convError) {
+            console.error('Error syncing conversation:', convError);
+          }
+        }
+      }
+
+      return successResponse({ success: true, message: 'Sync started' }, 200);
     }
 
     // GET CHAT

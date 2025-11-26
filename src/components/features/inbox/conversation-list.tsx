@@ -1,17 +1,19 @@
 'use client'
 
 import { useState } from 'react'
-import { Search, MessageCircle } from 'lucide-react'
+import { Search, MessageCircle, Pin, User } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
 
 interface Conversation {
   id: string
-  contact?: { name: string; phone?: string; email?: string }
+  contact?: { name: string; phone?: string; email?: string; avatar_url?: string | null }
   channel: string
   status: string
   unread_count: number
   last_message_at: string
+  is_pinned?: boolean
+  last_message_content?: string
 }
 
 interface ConversationListProps {
@@ -121,42 +123,60 @@ export function ConversationList({
                   : ''
               }`}
             >
-              <div className="flex items-start gap-3">
-                <div className="text-2xl flex-shrink-0">
-                  {getChannelIcon(conversation.channel)}
+              <div className="flex items-center gap-3">
+                <div className="relative flex-shrink-0">
+                    {conversation.contact?.avatar_url ? (
+                        <img 
+                            src={conversation.contact.avatar_url} 
+                            alt={conversation.contact.name}
+                            className="h-12 w-12 rounded-full object-cover"
+                        />
+                    ) : (
+                        <div className="h-12 w-12 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                            <User className="h-6 w-6 text-gray-500 dark:text-gray-400" />
+                        </div>
+                    )}
+                    <div className="absolute -bottom-1 -right-1 bg-white dark:bg-gray-800 rounded-full p-0.5">
+                        <span className="text-xs">{getChannelIcon(conversation.channel)}</span>
+                    </div>
                 </div>
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2 mb-1">
-                    <h3 className={`font-medium truncate ${
+                    <h3 className={`font-medium truncate text-base ${
                       conversation.unread_count > 0
                         ? 'text-gray-900 dark:text-white font-semibold'
                         : 'text-gray-900 dark:text-white'
                     }`}>
                       {conversation.contact?.name || 'Contato desconhecido'}
                     </h3>
-                    <span className={`px-2 py-0.5 rounded text-xs font-medium whitespace-nowrap ${getChannelColor(conversation.channel)}`}>
-                      {conversation.channel}
+                    <span className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">
+                        {formatDistanceToNow(new Date(conversation.last_message_at), {
+                            addSuffix: false,
+                            locale: ptBR,
+                        })}
                     </span>
                   </div>
 
-                  <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
-                    {conversation.contact?.phone || conversation.contact?.email || 'Sem contato'}
-                  </p>
-
-                  <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                    {formatDistanceToNow(new Date(conversation.last_message_at), {
-                      addSuffix: true,
-                      locale: ptBR,
-                    })}
-                  </p>
-                </div>
-
-                {conversation.unread_count > 0 && (
-                  <div className="ml-2 bg-red-500 text-white rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold flex-shrink-0">
-                    {conversation.unread_count > 9 ? '9+' : conversation.unread_count}
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-1 min-w-0 flex-1">
+                        <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                            {conversation.last_message_content || 'Nenhuma mensagem'}
+                        </p>
+                    </div>
+                    
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                         {conversation.is_pinned && (
+                            <Pin className="h-3.5 w-3.5 text-gray-500 dark:text-gray-400 transform rotate-45" />
+                          )}
+                        {conversation.unread_count > 0 && (
+                        <div className="bg-green-500 text-white rounded-full min-w-[1.25rem] h-5 px-1.5 flex items-center justify-center text-xs font-bold">
+                            {conversation.unread_count > 99 ? '99+' : conversation.unread_count}
+                        </div>
+                        )}
+                    </div>
                   </div>
-                )}
+                </div>
               </div>
             </button>
           ))

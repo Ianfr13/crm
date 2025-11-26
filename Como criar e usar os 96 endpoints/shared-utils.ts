@@ -8,7 +8,7 @@ import { UazapiClient } from "./uazapi-client.ts";
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
 export interface AuthContext {
@@ -49,7 +49,7 @@ export async function getAuthContext(req: Request): Promise<AuthContext | null> 
 
     const { data: integration } = await supabase
       .from('integrations')
-      .select('instance_token, config')
+      .select('instance_token')
       .eq('user_id', user.id)
       .eq('provider', 'uazapi')
       .maybeSingle();
@@ -60,14 +60,11 @@ export async function getAuthContext(req: Request): Promise<AuthContext | null> 
       adminToken: admin_token
     });
 
-    // Use instance name from query param OR from integration config
-    const finalInstanceName = instanceName || (integration?.config as any)?.instance_name || '';
-
     return {
       user,
       supabase,
       uazapi,
-      instanceName: finalInstanceName
+      instanceName
     };
   } catch (error) {
     console.error('Auth error:', error);

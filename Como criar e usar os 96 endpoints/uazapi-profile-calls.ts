@@ -4,7 +4,7 @@
  */
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { getAuthContext, corsHeaders, errorResponse, successResponse, corsResponse } from "../_shared/shared-utils.ts";
+import { getAuthContext, corsHeaders, errorResponse, successResponse, corsResponse } from "./shared-utils.ts";
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -25,8 +25,7 @@ serve(async (req) => {
 
     // GET PROFILE
     if (method === 'GET' && action === 'get_profile') {
-      // Using getInstanceStatus as profile endpoint is not standalone in spec
-      const result = await auth.uazapi.getInstanceStatus(auth.instanceName);
+      const result = await auth.uazapi.getProfile(auth.instanceName);
       return successResponse(result, result.success ? 200 : 400);
     }
 

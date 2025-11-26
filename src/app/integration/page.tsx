@@ -12,6 +12,8 @@ export default function IntegrationPage() {
 
   const [loading, setLoading] = useState(true)
   const [status, setStatus] = useState<'idle' | 'connecting' | 'connected'>('idle')
+  const [phoneNumber, setPhoneNumber] = useState('')
+  const [pairingCode, setPairingCode] = useState<string | null>(null)
   const [qrCode, setQrCode] = useState<string | null>(null)
   const [instanceStatus, setInstanceStatus] = useState<any>(null)
   const [error, setError] = useState<string | null>(null)
@@ -22,6 +24,8 @@ export default function IntegrationPage() {
 
   useEffect(() => {
     checkIntegrationStatus()
+    const interval = setInterval(checkIntegrationStatus, 5000)
+    return () => clearInterval(interval)
   }, [])
 
   const checkAuth = async () => {
@@ -51,29 +55,57 @@ export default function IntegrationPage() {
       setError(null)
       const result = await uazapiClient.admin.createInstance('CRM Instance')
       setInstanceStatus(result)
-      // Auto-fetch QR code
-      await handleGetQRCode()
+      // Auto-fetch connection (QR or Pairing)
+      await handleConnect()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao criar instância')
       setStatus('idle')
     }
   }
 
-  const handleGetQRCode = async () => {
+  const handleConnect = async () => {
     try {
-      const data = await uazapiClient.instance.getInstanceStatus()
-      setQrCode(data?.data?.qr_code || null)
+      // If phone number is provided, clean it
+      const cleanPhone = phoneNumber.replace(/\D/g, '')
+      const response = await uazapiClient.instance.connectInstance(cleanPhone || undefined)
+
+      // Extract data from response
+      // Structure based on user log: response.data.instance.paircode / qrcode
+      const instanceData = response?.data?.instance || response?.data || {}
+
+      const pairCode = instanceData.paircode || instanceData.pairingCode || response?.data?.paircode || response?.data?.pairingCode
+      const qr = instanceData.qrcode || instanceData.qr || instanceData.base64 || response?.data?.qrcode || response?.data?.qr || response?.data?.base64
+
+      if (cleanPhone) {
+        // Pairing Code flow
+        setPairingCode(pairCode || null)
+        setQrCode(null)
+      } else {
+        // QR Code flow
+        // If we have a paircode but no QR code (or empty), show paircode as fallback or if it was returned
+        if (qr && qr !== "") {
+          setQrCode(qr)
+          setPairingCode(null)
+        } else if (pairCode) {
+          setPairingCode(pairCode)
+          setQrCode(null)
+        } else {
+          setQrCode(null)
+          setPairingCode(null)
+        }
+      }
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Erro ao obter QR code')
+      setError(err instanceof Error ? err.message : 'Erro ao conectar')
     }
   }
 
   const handleDisconnect = async () => {
     try {
       setLoading(true)
-      await uazapiClient.instance.disconnectInstance()
+      await uazapiClient.instance.disconnectInstance('CRMInstance')
       setStatus('idle')
       setQrCode(null)
+      setPairingCode(null)
       setInstanceStatus(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao desconectar')
@@ -140,14 +172,35 @@ export default function IntegrationPage() {
               <p>
                 <span className="font-medium text-gray-700 dark:text-gray-300">ID da Instância:</span>
                 <span className="text-gray-600 dark:text-gray-400 ml-2">
-                  {instanceStatus.instance?.id?.substring(0, 8)}...
+                  {(instanceStatus.data?.instance?.id || instanceStatus.instance?.id)?.substring(0, 8)}...
                 </span>
               </p>
               <p>
                 <span className="font-medium text-gray-700 dark:text-gray-300">Status:</span>
                 <span className="text-gray-600 dark:text-gray-400 ml-2">
-                  {instanceStatus.connected ? 'Conectado' : 'Desconectado'}
+                  {instanceStatus.data?.connected || instanceStatus.connected ? 'Conectado' : 'Desconectado'}
                 </span>
+              </p>
+            </div>
+          )}
+
+          {/* Connection Options */}
+          {status === 'idle' && (
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                Número do WhatsApp (Opcional - para Código de Pareamento)
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  placeholder="5511999999999"
+                  value={phoneNumber}
+                  onChange={(e) => setPhoneNumber(e.target.value)}
+                  className="flex-1 px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <p className="text-xs text-gray-500 mt-1">
+                Deixe em branco para gerar um QR Code.
               </p>
             </div>
           )}
@@ -165,7 +218,7 @@ export default function IntegrationPage() {
                 ) : (
                   <Smartphone className="h-4 w-4" />
                 )}
-                {loading ? 'Conectando...' : 'Conectar WhatsApp'}
+                {loading ? 'Conectando...' : (phoneNumber ? 'Gerar Código de Pareamento' : 'Gerar QR Code')}
               </button>
             ) : (
               <button
@@ -184,7 +237,34 @@ export default function IntegrationPage() {
           </div>
         </div>
 
-        {/* QR Code */}
+        {/* Pairing Code Display */}
+        {pairingCode && (
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6 mb-8">
+            <div className="flex items-center gap-2 mb-6">
+              <Smartphone className="h-5 w-5 text-blue-600" />
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                Código de Pareamento
+              </h3>
+            </div>
+            <div className="flex flex-col items-center gap-6">
+              <div className="bg-gray-100 dark:bg-gray-700 p-6 rounded-lg">
+                <p className="text-4xl font-mono font-bold text-gray-900 dark:text-white tracking-wider">
+                  {pairingCode}
+                </p>
+              </div>
+              <div className="text-center">
+                <p className="text-gray-600 dark:text-gray-400 mb-2">
+                  Digite este código no seu WhatsApp:
+                </p>
+                <p className="text-sm text-gray-500">
+                  Configurações → Dispositivos Vinculados → Vincular dispositivo → Vincular com número de telefone
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* QR Code Display */}
         {qrCode && (
           <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-6">
             <div className="flex items-center gap-2 mb-6">
@@ -208,7 +288,7 @@ export default function IntegrationPage() {
                   Use seu telefone com WhatsApp para escanear este código
                 </p>
                 <button
-                  onClick={handleGetQRCode}
+                  onClick={handleConnect}
                   className="text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 text-sm font-medium"
                 >
                   Gerar novo QR Code
@@ -224,12 +304,12 @@ export default function IntegrationPage() {
             Como conectar seu WhatsApp:
           </h3>
           <ol className="space-y-2 text-sm text-blue-800 dark:text-blue-300 list-decimal list-inside">
-            <li>Clique em "Conectar WhatsApp"</li>
+            <li>Digite seu número (opcional) ou deixe em branco para QR Code</li>
+            <li>Clique no botão de conexão</li>
             <li>Abra o WhatsApp no seu telefone</li>
             <li>Vá para Configurações → Dispositivos Vinculados</li>
             <li>Clique em "Vincular um dispositivo"</li>
-            <li>Escaneie o QR Code exibido aqui</li>
-            <li>Pronto! Seu WhatsApp está conectado</li>
+            <li>Escaneie o QR Code ou digite o Código de Pareamento</li>
           </ol>
         </div>
       </div>

@@ -5,8 +5,8 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders, errorResponse, successResponse, corsResponse } from "../_shared/shared-utils.ts";
-import { UazapiClient } from "../_shared/uazapi-client.ts";
+import { corsHeaders, errorResponse, successResponse, corsResponse } from "./shared-utils.ts";
+import { UazapiClient } from "./uazapi-client.ts";
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -47,83 +47,41 @@ serve(async (req) => {
       adminToken: admin_token
     });
 
-    const service_role_key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    if (!service_role_key) {
-      return errorResponse('SUPABASE_SERVICE_ROLE_KEY must be configured', 500);
-    }
-
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      service_role_key,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
-    );
-
     // CREATE INSTANCE
     if (method === 'POST' && action === 'create_instance') {
       const { instance_name, system_name, admin_field_01, admin_field_02 } = await req.json();
-
-      // Check for existing integration
-      const { data: existingIntegration, error: fetchError } = await supabaseAdmin
-        .from('integrations')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('provider', 'uazapi')
-        .maybeSingle();
-
-      if (fetchError) {
-        console.error('Error fetching existing integration:', fetchError);
-        return errorResponse('Failed to check existing integration', 500);
-      }
-
-      // Sanitize name: remove spaces and special chars, keep only alphanumeric and hyphens
-      const rawName = instance_name || `instance_${Math.random().toString(36).substring(7)}`;
-      const sanitizedName = rawName.replace(/[^a-zA-Z0-9-]/g, '');
-
-      if (!sanitizedName) {
-        return errorResponse('Invalid instance name', 400);
-      }
-
-      const createResult = await uazapi.createInstance(sanitizedName, system_name, admin_field_01, admin_field_02);
+      const name = instance_name || `instance_${Math.random().toString(36).substring(7)}`;
+      
+      const createResult = await uazapi.createInstance(name, system_name, admin_field_01, admin_field_02);
       if (!createResult.success) {
-        console.error('Create Instance Failed:', createResult);
-        return new Response(JSON.stringify(createResult), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400
-        });
+        return errorResponse(createResult.error || 'Failed to create instance', 400);
       }
 
       const newInstanceToken = createResult.data.token;
       const newInstanceId = createResult.data.instance?.id;
 
+      const { data: existingIntegration } = await supabase
+        .from('integrations')
+        .select('id')
+        .eq('user_id', user.id)
+        .eq('provider', 'uazapi')
+        .maybeSingle();
+
       if (existingIntegration) {
-        const { error: updateError } = await supabaseAdmin.from('integrations').update({
+        await supabase.from('integrations').update({
           instance_token: newInstanceToken,
           active: true,
-          config: { instance_id: newInstanceId, instance_name: sanitizedName }
+          updated_at: new Date().toISOString(),
+          metadata: { instance_id: newInstanceId, instance_name: name }
         }).eq('id', existingIntegration.id);
-
-        if (updateError) {
-          console.error('DB Update Error:', updateError);
-          return errorResponse('Failed to update integration record', 500);
-        }
       } else {
-        const { error: insertError } = await supabaseAdmin.from('integrations').insert({
+        await supabase.from('integrations').insert({
           user_id: user.id,
           provider: 'uazapi',
           instance_token: newInstanceToken,
           active: true,
-          config: { instance_id: newInstanceId, instance_name: sanitizedName }
+          metadata: { instance_id: newInstanceId, instance_name: name }
         });
-
-        if (insertError) {
-          console.error('DB Insert Error:', insertError);
-          return errorResponse('Failed to create integration record', 500);
-        }
       }
 
       return successResponse({
