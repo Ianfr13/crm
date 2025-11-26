@@ -90,11 +90,12 @@ export default function LoginPage() {
                         >
                             {loading ? <Loader2 className="animate-spin h-5 w-5" /> : 'Sign in'}
                         </button>
-                        <div className="text-center mt-4">
-                             <Link href="/signup" className="text-sm text-blue-600 hover:underline dark:text-blue-400">
-                                Don't have an account? Sign up
-                             </Link>
-                        </div>
+                        <Link
+                            href="/signup"
+                            className="group relative flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600 dark:hover:bg-gray-600"
+                        >
+                            Create Account
+                        </Link>
                     </div>
                 </form>
             </div>
