@@ -1,0 +1,16 @@
+.git
+.gitignore
+README.md
+FRONTEND_IMPLEMENTATION.md
+SISTEMA_UAZAPI_ARQUITETURA.md
+.env.local
+.env.*.local
+node_modules
+.next
+out
+dist
+build
+*.log
+.DS_Store
+supabase/migrations
+supabase/functions

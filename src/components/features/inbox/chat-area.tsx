@@ -1,175 +1,187 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
-import { Message } from '@/types'
-import { createClient } from '@/lib/supabase/client'
-import { Send, Paperclip, Loader2 } from 'lucide-react'
-import { cn } from '@/lib/utils'
-import { format } from 'date-fns'
+import { useEffect, useState } from 'react'
+import { apiClient } from '@/lib/api/client'
+import { Send, Loader2, Phone, Video, MoreVertical } from 'lucide-react'
+import { formatDistanceToNow } from 'date-fns'
+import { ptBR } from 'date-fns/locale'
 
-interface ChatAreaProps {
-    conversationId: string
+interface Conversation {
+  id: string
+  contact?: { name: string; phone?: string; email?: string }
+  channel: string
+  status: string
+  unread_count: number
 }
 
-export function ChatArea({ conversationId }: ChatAreaProps) {
-    const [messages, setMessages] = useState<Message[]>([])
-    const [newMessage, setNewMessage] = useState('')
-    const [isLoading, setIsLoading] = useState(false)
-    const [isSending, setIsSending] = useState(false)
-    const messagesEndRef = useRef<HTMLDivElement>(null)
-    const supabase = createClient()
+interface Message {
+  id: string
+  content: string
+  sender_type: string
+  sender_id?: string
+  created_at: string
+  attachments?: any[]
+}
 
-    useEffect(() => {
-        fetchMessages()
+interface ChatAreaProps {
+  conversation: Conversation
+  onStatusChange: (id: string, status: string) => void
+}
 
-        const channel = supabase
-            .channel(`chat-${conversationId}`)
-            .on('postgres_changes', {
-                event: 'INSERT',
-                schema: 'public',
-                table: 'messages',
-                filter: `conversation_id=eq.${conversationId}`
-            }, (payload) => {
-                setMessages(prev => [...prev, payload.new as Message])
-                scrollToBottom()
-            })
-            .subscribe()
+export function ChatArea({ conversation, onStatusChange }: ChatAreaProps) {
+  const [messages, setMessages] = useState<Message[]>([])
+  const [loading, setLoading] = useState(true)
+  const [sending, setSending] = useState(false)
+  const [messageText, setMessageText] = useState('')
 
-        return () => {
-            supabase.removeChannel(channel)
-        }
-    }, [conversationId])
+  useEffect(() => {
+    loadMessages()
+  }, [conversation.id])
 
-    const fetchMessages = async () => {
-        setIsLoading(true)
-        const { data, error } = await supabase.functions.invoke('messages', {
-            method: 'GET',
-            headers: {
-                // Pass query params via URL not supported directly in invoke options body for GET usually, 
-                // but Supabase client handles it if we append to URL or use custom fetch.
-                // Actually invoke helper sends body as JSON. For GET params, we might need to append to function URL.
-                // Let's try passing it in body for now if we changed function to accept POST for list, 
-                // BUT my function expects GET with searchParams.
-                // The supabase-js invoke method doesn't easily support query params for GET.
-                // WORKAROUND: We'll use a custom fetch wrapper or just change the function to look at body for POST-based search if needed,
-                // OR construct the URL manually.
-                // Let's try constructing URL query params in the invoke call? No, invoke takes function name.
-                // We will modify the invoke call to pass query params in the URL.
-            }
-        })
-
-        // Wait, supabase.functions.invoke doesn't support query params easily for GET.
-        // Let's use the 'body' for GET? No, GET has no body.
-        // We need to pass query params.
-        // Let's try: invoke('messages?conversation_id=' + conversationId, { method: 'GET' })
-        // If that fails, we might need to switch the function to POST for listing or use a different client method.
-        // Documentation says: invoke('function_name', { body: ... })
-
-        // Let's try the URL param approach first.
-        const { data: fetchedMessages, error: fetchError } = await supabase.functions.invoke(`messages?conversation_id=${conversationId}`, {
-            method: 'GET'
-        })
-
-        if (fetchedMessages) {
-            setMessages(fetchedMessages)
-            scrollToBottom()
-        }
-        setIsLoading(false)
+  const loadMessages = async () => {
+    try {
+      setLoading(true)
+      const data = await apiClient.getMessages(conversation.id)
+      setMessages(data || [])
+    } catch (error) {
+      console.error('Erro ao carregar mensagens:', error)
+    } finally {
+      setLoading(false)
     }
+  }
 
-    const scrollToBottom = () => {
-        setTimeout(() => {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-        }, 100)
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!messageText.trim()) return
+
+    try {
+      setSending(true)
+      const newMessage = await apiClient.sendMessage(conversation.id, messageText)
+      setMessages([...messages, newMessage])
+      setMessageText('')
+    } catch (error) {
+      console.error('Erro ao enviar mensagem:', error)
+      alert('Erro ao enviar mensagem')
+    } finally {
+      setSending(false)
     }
+  }
 
-    const handleSendMessage = async (e: React.FormEvent) => {
-        e.preventDefault()
-        if (!newMessage.trim() || isSending) return
-
-        setIsSending(true)
-        const { data, error } = await supabase.functions.invoke('messages', {
-            method: 'POST',
-            body: {
-                conversation_id: conversationId,
-                content: newMessage,
-                sender_type: 'user' // In real app, get from auth context
-            }
-        })
-
-        if (data) {
-            setNewMessage('')
-            // Message will be added via realtime subscription
-        }
-        setIsSending(false)
+  const getSenderColor = (senderType: string) => {
+    const colors: Record<string, string> = {
+      user: 'bg-blue-100 dark:bg-blue-900',
+      contact: 'bg-gray-100 dark:bg-gray-700',
+      agent: 'bg-green-100 dark:bg-green-900',
+      system: 'bg-yellow-100 dark:bg-yellow-900',
     }
+    return colors[senderType] || 'bg-gray-100 dark:bg-gray-700'
+  }
 
-    return (
-        <div className="flex flex-col h-full">
-            {/* Header */}
-            <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-                <h2 className="font-semibold">Conversation</h2>
-            </div>
+  const getSenderLabel = (senderType: string) => {
+    const labels: Record<string, string> = {
+      user: 'Você',
+      contact: 'Contato',
+      agent: 'Agente',
+      system: 'Sistema',
+    }
+    return labels[senderType] || senderType
+  }
 
-            {/* Messages List */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-4 bg-gray-50 dark:bg-gray-950">
-                {isLoading ? (
-                    <div className="flex justify-center p-4"><Loader2 className="animate-spin" /></div>
-                ) : (
-                    messages.map((msg) => (
-                        <div
-                            key={msg.id}
-                            className={cn(
-                                "flex w-full",
-                                msg.sender_type === 'user' ? "justify-end" : "justify-start"
-                            )}
-                        >
-                            <div
-                                className={cn(
-                                    "max-w-[70%] rounded-lg p-3 text-sm",
-                                    msg.sender_type === 'user'
-                                        ? "bg-primary text-white rounded-br-none"
-                                        : "bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-bl-none"
-                                )}
-                            >
-                                <p>{msg.content}</p>
-                                <span className={cn(
-                                    "text-[10px] block mt-1 opacity-70",
-                                    msg.sender_type === 'user' ? "text-blue-100" : "text-gray-400"
-                                )}>
-                                    {format(new Date(msg.created_at), 'HH:mm')}
-                                </span>
-                            </div>
-                        </div>
-                    ))
-                )}
-                <div ref={messagesEndRef} />
-            </div>
-
-            {/* Composer */}
-            <div className="p-4 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800">
-                <form onSubmit={handleSendMessage} className="flex gap-2">
-                    <button
-                        type="button"
-                        className="p-2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-                    >
-                        <Paperclip className="h-5 w-5" />
-                    </button>
-                    <input
-                        value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        placeholder="Type a message..."
-                        className="flex-1 bg-gray-100 dark:bg-gray-800 border-0 rounded-full px-4 focus:ring-2 focus:ring-primary outline-none"
-                    />
-                    <button
-                        type="submit"
-                        disabled={isSending || !newMessage.trim()}
-                        className="p-2 bg-primary text-white rounded-full hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {isSending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
-                    </button>
-                </form>
-            </div>
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden flex flex-col h-full">
+      {/* Header */}
+      <div className="p-4 border-b border-gray-200 dark:border-gray-700 flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">
+            {conversation.contact?.name || 'Conversa'}
+          </h2>
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            {conversation.contact?.phone || conversation.contact?.email || 'Sem contato'}
+          </p>
         </div>
-    )
+
+        <div className="flex items-center gap-2">
+          <select
+            value={conversation.status}
+            onChange={(e) => onStatusChange(conversation.id, e.target.value)}
+            className="px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+          >
+            <option value="open">Aberta</option>
+            <option value="closed">Fechada</option>
+            <option value="snoozed">Pausada</option>
+          </select>
+
+          <button className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+            <Phone className="h-5 w-5" />
+          </button>
+          <button className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+            <Video className="h-5 w-5" />
+          </button>
+          <button className="p-2 text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors">
+            <MoreVertical className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Messages */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {loading ? (
+          <div className="flex items-center justify-center h-full">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+          </div>
+        ) : messages.length === 0 ? (
+          <div className="flex items-center justify-center h-full text-gray-500 dark:text-gray-400">
+            <p>Nenhuma mensagem ainda</p>
+          </div>
+        ) : (
+          messages.map((message) => (
+            <div
+              key={message.id}
+              className={`flex ${message.sender_type === 'user' ? 'justify-end' : 'justify-start'}`}
+            >
+              <div className={`max-w-xs lg:max-w-md px-4 py-2 rounded-lg ${getSenderColor(message.sender_type)}`}>
+                <p className="text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                  {getSenderLabel(message.sender_type)}
+                </p>
+                <p className="text-gray-900 dark:text-white break-words">
+                  {message.content}
+                </p>
+                <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                  {formatDistanceToNow(new Date(message.created_at), {
+                    addSuffix: false,
+                    locale: ptBR,
+                  })}
+                </p>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Input */}
+      <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={messageText}
+            onChange={(e) => setMessageText(e.target.value)}
+            placeholder="Digite uma mensagem..."
+            disabled={sending}
+            className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+          />
+          <button
+            type="submit"
+            disabled={sending || !messageText.trim()}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+          >
+            {sending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4" />
+            )}
+          </button>
+        </div>
+      </form>
+    </div>
+  )
 }

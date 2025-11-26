@@ -1,103 +1,106 @@
 'use client'
 
 import { useState } from 'react'
-import { Contact } from '@/types'
-import { Plus, Search, User } from 'lucide-react'
-import { createClient } from '@/lib/supabase/client'
-import { useRouter } from 'next/navigation'
+import { Search, Trash2 } from 'lucide-react'
 
-export function ContactList({ initialContacts }: { initialContacts: Contact[] }) {
-    const [contacts, setContacts] = useState(initialContacts)
-    const [search, setSearch] = useState('')
-    const [isCreateOpen, setIsCreateOpen] = useState(false)
-    const router = useRouter()
-    const supabase = createClient()
+interface Contact {
+  id: string
+  name: string
+  email?: string
+  phone?: string
+  pipeline_stage?: string
+}
 
-    const filteredContacts = contacts.filter(contact =>
-        contact.name.toLowerCase().includes(search.toLowerCase()) ||
-        contact.email?.toLowerCase().includes(search.toLowerCase())
-    )
+interface ContactListProps {
+  contacts: Contact[]
+  selectedId: string | null
+  onSelect: (id: string) => void
+  onDelete: (id: string) => void
+}
 
-    return (
-        <div className="space-y-4">
-            <div className="flex gap-2">
-                <div className="relative flex-1">
-                    <Search className="absolute left-3 top-2.5 h-4 w-4 text-gray-400" />
-                    <input
-                        placeholder="Search contacts..."
-                        className="w-full rounded-md border border-gray-200 pl-9 py-2 text-sm outline-none focus:border-primary dark:bg-gray-800 dark:border-gray-700"
-                        value={search}
-                        onChange={(e) => setSearch(e.target.value)}
-                    />
+export function ContactList({
+  contacts,
+  selectedId,
+  onSelect,
+  onDelete,
+}: ContactListProps) {
+  const [search, setSearch] = useState('')
+
+  const filtered = contacts.filter(
+    c =>
+      c.name.toLowerCase().includes(search.toLowerCase()) ||
+      c.email?.toLowerCase().includes(search.toLowerCase()) ||
+      c.phone?.includes(search)
+  )
+
+  return (
+    <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md overflow-hidden">
+      {/* Search */}
+      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
+        <div className="relative">
+          <Search className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Buscar contatos..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+      </div>
+
+      {/* List */}
+      <div className="divide-y divide-gray-200 dark:divide-gray-700 max-h-96 overflow-y-auto">
+        {filtered.length === 0 ? (
+          <div className="p-6 text-center text-gray-500 dark:text-gray-400">
+            Nenhum contato encontrado
+          </div>
+        ) : (
+          filtered.map((contact) => (
+            <div
+              key={contact.id}
+              className={`p-4 cursor-pointer transition-colors hover:bg-gray-50 dark:hover:bg-gray-700 ${
+                selectedId === contact.id
+                  ? 'bg-blue-50 dark:bg-blue-900'
+                  : ''
+              }`}
+              onClick={() => onSelect(contact.id)}
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex-1 min-w-0">
+                  <h3 className="font-medium text-gray-900 dark:text-white truncate">
+                    {contact.name}
+                  </h3>
+                  {contact.phone && (
+                    <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                      {contact.phone}
+                    </p>
+                  )}
+                  {contact.email && (
+                    <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                      {contact.email}
+                    </p>
+                  )}
+                  {contact.pipeline_stage && (
+                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                      {contact.pipeline_stage}
+                    </p>
+                  )}
                 </div>
                 <button
-                    onClick={() => setIsCreateOpen(true)}
-                    className="flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onDelete(contact.id)
+                  }}
+                  className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
                 >
-                    <Plus className="h-4 w-4" />
-                    New Contact
+                  <Trash2 className="h-4 w-4" />
                 </button>
+              </div>
             </div>
-
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {filteredContacts.map(contact => (
-                    <div key={contact.id} className="flex items-center gap-4 rounded-lg border bg-white p-4 shadow-sm dark:bg-gray-800 dark:border-gray-700 hover:border-primary/50 cursor-pointer transition-colors">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                            <User className="h-5 w-5" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <p className="truncate font-medium text-gray-900 dark:text-white">{contact.name}</p>
-                            <p className="truncate text-sm text-gray-500 dark:text-gray-400">{contact.email}</p>
-                        </div>
-                    </div>
-                ))}
-            </div>
-
-            {/* Simple Modal for Create Contact */}
-            {isCreateOpen && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-                    <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800">
-                        <h2 className="text-lg font-semibold mb-4">Create New Contact</h2>
-                        <form onSubmit={async (e) => {
-                            e.preventDefault()
-                            const formData = new FormData(e.currentTarget)
-                            const name = formData.get('name') as string
-                            const email = formData.get('email') as string
-
-                            const { data, error } = await supabase.functions.invoke('contacts', {
-                                method: 'POST',
-                                body: { name, email }
-                            })
-
-                            if (error) {
-                                console.error('Error creating contact:', error)
-                                return
-                            }
-
-                            if (data) {
-                                setContacts([data, ...contacts])
-                                setIsCreateOpen(false)
-                                router.refresh()
-                            }
-                        }}>
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Name</label>
-                                    <input name="name" required className="w-full rounded-md border p-2 dark:bg-gray-700 dark:border-gray-600" />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Email</label>
-                                    <input name="email" type="email" className="w-full rounded-md border p-2 dark:bg-gray-700 dark:border-gray-600" />
-                                </div>
-                                <div className="flex justify-end gap-2 mt-6">
-                                    <button type="button" onClick={() => setIsCreateOpen(false)} className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-md dark:text-gray-300 dark:hover:bg-gray-700">Cancel</button>
-                                    <button type="submit" className="px-4 py-2 text-sm font-medium text-white bg-primary hover:bg-primary/90 rounded-md">Create</button>
-                                </div>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-            )}
-        </div>
-    )
+          ))
+        )}
+      </div>
+    </div>
+  )
 }
