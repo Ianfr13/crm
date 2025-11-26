@@ -24,9 +24,13 @@ export function ConnectInstance({ onConnected }: { onConnected: () => void }) {
                 console.log('ConnectInstance status response:', res.data)
                 // Handle different response structures
                 const rawStatus = res.data.status || res.data.instance?.status
-                const statusString = rawStatus
+                let statusString = rawStatus
                     ? (typeof rawStatus === 'object' ? (rawStatus.status || 'unknown') : rawStatus)
                     : (res.data.connected ? 'connected' : 'disconnected')
+
+                if (typeof statusString === 'string') {
+                    statusString = statusString.toLowerCase()
+                }
 
                 setStatus(statusString)
 

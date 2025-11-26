@@ -50,7 +50,12 @@ function InboxContent() {
       const res = await uazapiClient.instance.getInstanceStatus()
       if (res.success) {
         const statusData = res.data.status || res.data.instance?.status || (res.data.connected ? 'open' : 'closed')
-        const statusString = typeof statusData === 'object' ? (statusData.status || 'unknown') : statusData
+        let statusString = typeof statusData === 'object' ? (statusData.status || 'unknown') : statusData
+
+        if (typeof statusString === 'string') {
+          statusString = statusString.toLowerCase()
+        }
+
         setInstanceStatus(statusString === 'connected' ? 'open' : statusString)
       } else {
         setInstanceStatus('unknown')
