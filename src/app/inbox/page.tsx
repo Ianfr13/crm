@@ -49,8 +49,18 @@ function InboxContent() {
     try {
       const res = await uazapiClient.instance.getInstanceStatus()
       if (res.success) {
-        const statusData = res.data.status || res.data.instance?.status || (res.data.connected ? 'open' : 'closed')
-        let statusString = typeof statusData === 'object' ? (statusData.status || 'unknown') : statusData
+        // Prioritize explicit string status from instance object
+        let statusString = 'unknown'
+        
+        if (typeof res.data.instance?.status === 'string') {
+            statusString = res.data.instance.status
+        } else if (typeof res.data.status === 'string') {
+            statusString = res.data.status
+        } else if (res.data.status?.connected === true || res.data.status?.status === 'connected') {
+            statusString = 'connected'
+        } else if (res.data.connected === true) {
+            statusString = 'connected'
+        }
 
         if (typeof statusString === 'string') {
           statusString = statusString.toLowerCase()
