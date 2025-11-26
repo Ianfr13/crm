@@ -47,7 +47,7 @@ export const apiClient = {
     if (!session) throw new Error('Não autenticado')
 
     const response = await supabase.functions.invoke('contacts', {
-      method: 'PUT',
+      method: 'PATCH',
       headers: {
         Authorization: `Bearer ${session.access_token}`,
       },
@@ -97,7 +97,7 @@ export const apiClient = {
     if (!session) throw new Error('Não autenticado')
 
     const response = await supabase.functions.invoke('conversations', {
-      method: 'GET',
+      method: 'POST',
       headers: {
         Authorization: `Bearer ${session.access_token}`,
       },
@@ -113,7 +113,7 @@ export const apiClient = {
     if (!session) throw new Error('Não autenticado')
 
     const response = await supabase.functions.invoke('conversations', {
-      method: 'PUT',
+      method: 'PATCH',
       headers: {
         Authorization: `Bearer ${session.access_token}`,
       },
@@ -132,7 +132,7 @@ export const apiClient = {
     if (!session) throw new Error('Não autenticado')
 
     const response = await supabase.functions.invoke('messages', {
-      method: 'GET',
+      method: 'POST',
       headers: {
         Authorization: `Bearer ${session.access_token}`,
       },
@@ -170,15 +170,12 @@ export const apiClient = {
     const { data: { session } } = await supabase.auth.getSession()
     if (!session) throw new Error('Não autenticado')
 
-    const url = new URL('https://your-supabase-url.supabase.co/functions/v1/uazapi-integration')
-    url.searchParams.set('action', 'create_instance')
-
     const response = await supabase.functions.invoke('uazapi-integration', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${session.access_token}`,
       },
-      body: { instance_name: instanceName },
+      body: { action: 'create_instance', instance_name: instanceName },
     })
 
     if (response.error) throw response.error
@@ -190,7 +187,7 @@ export const apiClient = {
     if (!session) throw new Error('Não autenticado')
 
     const response = await supabase.functions.invoke('uazapi-integration', {
-      method: 'GET',
+      method: 'POST',
       headers: {
         Authorization: `Bearer ${session.access_token}`,
       },
@@ -206,7 +203,7 @@ export const apiClient = {
     if (!session) throw new Error('Não autenticado')
 
     const response = await supabase.functions.invoke('uazapi-integration', {
-      method: 'GET',
+      method: 'POST',
       headers: {
         Authorization: `Bearer ${session.access_token}`,
       },
