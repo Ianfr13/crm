@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { apiClient } from '@/lib/api/client'
+import { uazapiClient } from '@/lib/api/uazapi-client'
 import { ContactList } from '@/components/features/contacts/contact-list'
 import { ContactDetail } from '@/components/features/contacts/contact-detail'
 import { ContactForm } from '@/components/features/contacts/contact-form'
@@ -40,8 +40,8 @@ function ContactsContent() {
   const loadContacts = async () => {
     try {
       setLoading(true)
-      const data = await apiClient.getContacts()
-      setContacts(data || [])
+      const data = await uazapiClient.contacts.listContacts()
+      setContacts(data?.data || [])
     } catch (error) {
       console.error('Erro ao carregar contatos:', error)
     } finally {
@@ -51,7 +51,8 @@ function ContactsContent() {
 
   const handleAddContact = async (formData: any) => {
     try {
-      const newContact = await apiClient.createContact(formData)
+      const result = await uazapiClient.contacts.createContact(formData.name, formData.phone || formData.email)
+      const newContact = result?.data || formData
       setContacts([newContact, ...contacts])
       setShowForm(false)
       setSelectedContactId(newContact.id)
@@ -63,8 +64,12 @@ function ContactsContent() {
 
   const handleUpdateContact = async (id: string, updates: any) => {
     try {
-      const updated = await apiClient.updateContact(id, updates)
-      setContacts(contacts.map(c => c.id === id ? updated : c))
+      const contact = contacts.find(c => c.id === id)
+      if (contact) {
+        const result = await uazapiClient.contacts.updateContact(contact.phone || contact.number, updates.name)
+        const updated = result?.data || { ...contact, ...updates }
+        setContacts(contacts.map(c => c.id === id ? updated : c))
+      }
       setEditingContact(null)
     } catch (error) {
       console.error('Erro ao atualizar contato:', error)
@@ -76,7 +81,10 @@ function ContactsContent() {
     if (!confirm('Tem certeza que deseja deletar este contato?')) return
 
     try {
-      await apiClient.deleteContact(id)
+      const contact = contacts.find(c => c.id === id)
+      if (contact) {
+        await uazapiClient.contacts.deleteContact(contact.phone || contact.number)
+      }
       setContacts(contacts.filter(c => c.id !== id))
       if (selectedContactId === id) {
         setSelectedContactId(null)

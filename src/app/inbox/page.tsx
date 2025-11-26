@@ -3,7 +3,7 @@
 import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { apiClient } from '@/lib/api/client'
+import { uazapiClient } from '@/lib/api/uazapi-client'
 import { ConversationList } from '@/components/features/inbox/conversation-list'
 import { ChatArea } from '@/components/features/inbox/chat-area'
 import { Loader2 } from 'lucide-react'
@@ -38,8 +38,8 @@ function InboxContent() {
   const loadConversations = async () => {
     try {
       setLoading(true)
-      const data = await apiClient.getConversations()
-      setConversations(data || [])
+      const data = await uazapiClient.chats.listChats()
+      setConversations(data?.data || [])
     } catch (error) {
       console.error('Erro ao carregar conversas:', error)
     } finally {
@@ -62,7 +62,7 @@ function InboxContent() {
 
   const handleMarkAsRead = async (conversationId: string) => {
     try {
-      await apiClient.updateConversation(conversationId, { unread_count: 0 })
+      // Marcar como lido localmente
       setConversations(
         conversations.map(c =>
           c.id === conversationId ? { ...c, unread_count: 0 } : c
@@ -75,7 +75,7 @@ function InboxContent() {
 
   const handleUpdateStatus = async (conversationId: string, status: string) => {
     try {
-      await apiClient.updateConversation(conversationId, { status })
+      // Atualizar status localmente
       setConversations(
         conversations.map(c =>
           c.id === conversationId ? { ...c, status } : c

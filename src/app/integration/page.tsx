@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { apiClient } from '@/lib/api/client'
+import { uazapiClient } from '@/lib/api/uazapi-client'
 import { Loader2, QrCode, CheckCircle, AlertCircle, Smartphone } from 'lucide-react'
 
 export default function IntegrationPage() {
@@ -35,9 +35,9 @@ export default function IntegrationPage() {
 
   const checkIntegrationStatus = async () => {
     try {
-      const data = await apiClient.getUazapiInstanceStatus()
+      const data = await uazapiClient.instance.getInstanceStatus()
       setInstanceStatus(data)
-      if (data?.connected) {
+      if (data?.data?.connected) {
         setStatus('connected')
       }
     } catch (error) {
@@ -49,7 +49,7 @@ export default function IntegrationPage() {
     try {
       setStatus('connecting')
       setError(null)
-      const result = await apiClient.createUazapiInstance('CRM Instance')
+      const result = await uazapiClient.admin.createInstance('CRM Instance')
       setInstanceStatus(result)
       // Auto-fetch QR code
       await handleGetQRCode()
@@ -61,8 +61,8 @@ export default function IntegrationPage() {
 
   const handleGetQRCode = async () => {
     try {
-      const qr = await apiClient.getUazapiQRCode()
-      setQrCode(qr)
+      const data = await uazapiClient.instance.getInstanceStatus()
+      setQrCode(data?.data?.qr_code || null)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erro ao obter QR code')
     }
@@ -71,7 +71,7 @@ export default function IntegrationPage() {
   const handleDisconnect = async () => {
     try {
       setLoading(true)
-      await apiClient.disconnectUazapiInstance()
+      await uazapiClient.instance.disconnectInstance()
       setStatus('idle')
       setQrCode(null)
       setInstanceStatus(null)

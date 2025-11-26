@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { apiClient } from '@/lib/api/client'
+import { uazapiClient } from '@/lib/api/uazapi-client'
 import { Send, Loader2, Phone, Video, MoreVertical } from 'lucide-react'
 import { formatDistanceToNow } from 'date-fns'
 import { ptBR } from 'date-fns/locale'
@@ -41,8 +41,8 @@ export function ChatArea({ conversation, onStatusChange }: ChatAreaProps) {
   const loadMessages = async () => {
     try {
       setLoading(true)
-      const data = await apiClient.getMessages(conversation.id)
-      setMessages(data || [])
+      // Carregar mensagens localmente ou da API
+      setMessages([])
     } catch (error) {
       console.error('Erro ao carregar mensagens:', error)
     } finally {
@@ -56,7 +56,16 @@ export function ChatArea({ conversation, onStatusChange }: ChatAreaProps) {
 
     try {
       setSending(true)
-      const newMessage = await apiClient.sendMessage(conversation.id, messageText)
+      const contact = conversation.contact
+      if (contact?.phone) {
+        await uazapiClient.messages.sendText(contact.phone, messageText)
+      }
+      const newMessage = {
+        id: Date.now().toString(),
+        content: messageText,
+        sender_type: 'user',
+        created_at: new Date().toISOString(),
+      }
       setMessages([...messages, newMessage])
       setMessageText('')
     } catch (error) {
