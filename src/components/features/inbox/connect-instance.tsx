@@ -10,6 +10,7 @@ export function ConnectInstance({ onConnected }: { onConnected: () => void }) {
     const [status, setStatus] = useState<string>('checking')
     const [qrCode, setQrCode] = useState<string | null>(null)
     const [loading, setLoading] = useState(false)
+    const [debugData, setDebugData] = useState<any>(null)
 
     useEffect(() => {
         checkStatus()
@@ -20,6 +21,8 @@ export function ConnectInstance({ onConnected }: { onConnected: () => void }) {
     const checkStatus = async () => {
         try {
             const res = await uazapiClient.instance.getInstanceStatus()
+            setDebugData(res) // Save full response for debugging
+            
             if (res.success) {
                 console.log('ConnectInstance status response:', res.data)
                 // Handle different response structures
@@ -39,6 +42,9 @@ export function ConnectInstance({ onConnected }: { onConnected: () => void }) {
                 } else if (res.data.qrcode || res.data.base64 || res.data.instance?.qrcode) {
                     setQrCode(res.data.qrcode || res.data.base64 || res.data.instance?.qrcode)
                 }
+            } else {
+                // Handle unsuccessful response
+                setStatus('error')
             }
         } catch (error) {
             console.error('Error checking status:', error)
@@ -116,6 +122,12 @@ export function ConnectInstance({ onConnected }: { onConnected: () => void }) {
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                     <RefreshCw className={`h-4 w-4 ${status === 'checking' ? 'animate-spin' : ''}`} />
                     Status: <span className="font-medium capitalize">{status}</span>
+                </div>
+                
+                {/* Debug Info */}
+                <div className="w-full mt-4 p-2 bg-gray-100 dark:bg-gray-800 rounded text-xs font-mono overflow-auto max-h-32">
+                    <p className="font-bold mb-1">Debug Info:</p>
+                    <pre>{JSON.stringify(debugData, null, 2)}</pre>
                 </div>
             </CardContent>
         </Card>
