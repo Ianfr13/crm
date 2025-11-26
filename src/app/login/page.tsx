@@ -33,28 +33,6 @@ export default function LoginPage() {
         }
     }
 
-    const handleSignUp = async () => {
-        setLoading(true)
-        setError(null)
-        const { data, error } = await supabase.auth.signUp({
-            email,
-            password,
-        })
-
-        if (error) {
-            setError(error.message)
-            setLoading(false)
-        } else if (data.user) {
-            // Usuário criado com sucesso
-            setError('Account created! You can now sign in.')
-            setLoading(false)
-            // Aguarda 2 segundos e faz login automaticamente
-            setTimeout(() => {
-                handleLogin(new Event('submit') as any)
-            }, 2000)
-        }
-    }
-
     return (
         <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
             <div className="w-full max-w-md space-y-8 bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg">
@@ -62,9 +40,6 @@ export default function LoginPage() {
                     <h2 className="mt-6 text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
                         Sign in to your account
                     </h2>
-                    <p className="mt-2 text-sm text-gray-600 dark:text-gray-400">
-                        Or create a new account
-                    </p>
                 </div>
 
                 <form className="mt-8 space-y-6" onSubmit={handleLogin}>
@@ -113,14 +88,6 @@ export default function LoginPage() {
                             )}
                         >
                             {loading ? <Loader2 className="animate-spin h-5 w-5" /> : 'Sign in'}
-                        </button>
-                        <button
-                            type="button"
-                            onClick={handleSignUp}
-                            disabled={loading}
-                            className="group relative flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600 dark:hover:bg-gray-600"
-                        >
-                            Create Account
                         </button>
                     </div>
                 </form>

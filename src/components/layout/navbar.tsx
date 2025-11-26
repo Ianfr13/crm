@@ -62,17 +62,16 @@ export function Navbar() {
         <div className="flex justify-between items-center h-16">
           {/* Logo */}
           <Link href="/dashboard" className="flex items-center gap-2">
-            <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center">
-              <span className="text-white font-bold">CRM</span>
-            </div>
-            <span className="font-bold text-gray-900 dark:text-white hidden sm:inline">
-              Chat CRM
-            </span>
+            <img 
+                src="https://i.postimg.cc/94GhBDTk/LOGO-19.png" 
+                alt="Logo" 
+                className="h-12 w-auto"
+            />
           </Link>
 
           {/* Desktop Menu */}
           <div className="hidden md:flex items-center gap-1">
-            {navItems.map((item) => (
+            {user && navItems.map((item) => (
               <Link
                 key={item.href}
                 href={item.href}
@@ -136,7 +135,7 @@ export function Navbar() {
         </div>
 
         {/* Mobile Menu */}
-        {mobileMenuOpen && (
+        {mobileMenuOpen && user && (
           <div className="md:hidden border-t border-gray-200 dark:border-gray-700 py-2">
             {navItems.map((item) => (
               <Link
