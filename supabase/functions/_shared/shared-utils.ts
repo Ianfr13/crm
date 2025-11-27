@@ -8,7 +8,8 @@ import { UazapiClient } from "./uazapi-client.ts";
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey',
+  // IMPORTANT: include custom headers used by the frontend (like 'token') to avoid CORS issues
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-client-info, apikey, token',
 };
 
 export interface AuthContext {
@@ -44,24 +45,29 @@ export async function getAuthContext(req: Request): Promise<AuthContext | null> 
       return null;
     }
 
-    const url = new URL(req.url);
-    const instanceName = url.searchParams.get('instance') || '';
+    const serviceClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
 
-    const { data: integration } = await supabase
-      .from('integrations')
-      .select('instance_token, config')
+    const url = new URL(req.url);
+    const instanceNameParam = url.searchParams.get('instance');
+
+    // Buscar instância na tabela instances (fonte da verdade)
+    const { data: instance } = await serviceClient
+      .from('instances')
+      .select('token, name')
       .eq('user_id', user.id)
-      .eq('provider', 'uazapi')
       .maybeSingle();
 
     const uazapi = new UazapiClient({
       baseUrl: base_url,
-      instanceToken: integration?.instance_token,
+      instanceToken: instance?.token,
       adminToken: admin_token
     });
 
-    // Use instance name from query param OR from integration config
-    const finalInstanceName = instanceName || (integration?.config as any)?.instance_name || '';
+    // Use instance name from query param OR from instance table
+    const finalInstanceName = instanceNameParam || instance?.name || '';
 
     return {
       user,

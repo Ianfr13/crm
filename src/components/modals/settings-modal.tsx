@@ -135,36 +135,29 @@ export const SettingsModal = ({ isOpen, onClose, isDark, themeColor, setThemeCol
       setConnectionStatus('connecting');
       setErrorMessage(null);
       try {
-          const data = await uazapiClient.instance.connectInstance();
-          
-          // Check if connection was successful
-          if (data?.instance_token) {
-              // Save new instance credentials
+          // Sempre garante/atualiza a instância deste usuário via função admin
+          const { data: { user } } = await supabase.auth.getUser();
+          const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User';
+          const instanceName = `${userName} - CRM`;
+
+          const createRes = await uazapiClient.admin.createInstance(instanceName);
+          console.log("Create instance response (settings):", createRes);
+
+          if (createRes?.instance_token) {
               await supabase.auth.updateUser({
-                  data: { 
-                      uazapi_token: data.instance_token,
-                      uazapi_instance_id: data.instance_id
-                  }
+                  data: {
+                      uazapi_token: createRes.instance_token,
+                      uazapi_instance_id: createRes.instance_id,
+                  },
               });
-          } else if (!data?.instance_token) {
-              // Fallback: If connectInstance didn't return token directly but we might have one stored or it's a reconnect
-              // Actually, connectInstance only returns token if it created a new one or returned existing info.
-              // If the user ALREADY has a token, the uazapiClient injected it.
-              // So if data.instance_token is missing, we assume we are using the existing one.
           }
 
-          // Handle response states
-          // ... (rest of the logic remains similar but we ensure flow)
+          // 4. Connect Instance
+          // A Edge Function vai usar o token que acabamos de criar/garantir na tabela instances
+          const data = await uazapiClient.instance.connectInstance();
+          
+          console.log("Connect instance response:", data);
 
-          // If user is trying to connect but already has an instance (data.instance_token exists), 
-          // it means the instance was created or recovered. We should proceed to show QR.
-          
-          // The backend creates a new instance every time connectInstance() is called without a token.
-          // To ensure "creation is unique per user", the `uazapiClient.instance.connectInstance()` logic 
-          // (which we updated previously to inject the stored token) is handling the "reuse" part.
-          // However, here in the UI, if we receive a new token (meaning a new instance was potentially created 
-          // because the user didn't have one or the old one was invalid), we save it.
-          
           // Now update the UI state based on the response
           // Case 1: QR Code is returned directly or inside nested structures
           if (data?.qrcode || data?.instance?.qrcode || data?.data?.qrcode || data?.data?.instance?.qrcode) {
@@ -182,14 +175,10 @@ export const SettingsModal = ({ isOpen, onClose, isDark, themeColor, setThemeCol
               setInstanceData(data?.instance || data?.data?.instance);
           } 
           // Case 3: Instance created but disconnected and NO QR yet (Need to fetch QR explicitly)
-          else if (data?.success && data?.instance_token && !data?.qrcode && !data?.data?.qrcode) {
-              // The instance was just created (as per your JSON example), but the response doesn't contain the QR code yet.
-              // We need to call connect/status again or just wait for the polling to pick it up.
-              // But typically, we want to force a QR fetch immediately if possible.
-              // Let's set status to 'connecting' to trigger the poller or try to fetch status immediately.
+          else if (data?.success && !data?.qrcode && !data?.data?.qrcode) {
+              // The instance was just created, but the response doesn't contain the QR code yet.
               console.log("Instance created, waiting for QR...", data);
               setConnectionStatus('connecting'); // This will trigger the poller in useEffect
-              // Optionally call checkInstanceStatus() immediately
               setTimeout(checkInstanceStatus, 1000);
           }
           else {

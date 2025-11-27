@@ -66,17 +66,28 @@ export function ConnectInstance({ onConnected }: { onConnected: () => void }) {
     const handleConnect = async () => {
         try {
             setLoading(true)
-            const res = await uazapiClient.instance.connectInstance('')
-            
-            // Save instance credentials to user metadata if returned
-            if (res?.instance_token) {
+
+            // Sempre garante/atualiza a instância para este usuário via Edge Function admin
+            const { data: { user } } = await supabase.auth.getUser()
+            const userName = user?.user_metadata?.full_name || user?.email?.split('@')[0] || 'User'
+            const instanceName = `${userName} - CRM`
+
+            const createRes = await uazapiClient.admin.createInstance(instanceName)
+            console.log("Create instance response:", createRes)
+
+            // Opcional: salvar token em metadata se vier na resposta (cache)
+            if (createRes?.instance_token) {
                 await supabase.auth.updateUser({
-                    data: { 
-                        uazapi_token: res.instance_token,
-                        uazapi_instance_id: res.instance_id
-                    }
-                });
+                    data: {
+                        uazapi_token: createRes.instance_token,
+                        uazapi_instance_id: createRes.instance_id,
+                    },
+                })
             }
+
+            // Conectar instância (gera QRCode quando necessário)
+            // A Edge Function uazapi-instance vai pegar o token da tabela instances
+            const res = await uazapiClient.instance.connectInstance()
 
             if (res.success && res.data.qrcode) {
                 setQrCode(res.data.qrcode)

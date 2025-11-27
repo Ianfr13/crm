@@ -11,9 +11,6 @@ async function invokeFunction(functionName: string, action: string, body?: any, 
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Não autenticado')
 
-  // Extract instance token from user metadata if available
-  const uazapiToken = session.user.user_metadata?.uazapi_token;
-
   // Append action to the URL query parameters
   // For GET requests, we also need to append body params as query params if they exist
   let url = `${functionName}?action=${action}`
@@ -39,11 +36,6 @@ async function invokeFunction(functionName: string, action: string, body?: any, 
   const headers: any = {
     Authorization: `Bearer ${session.access_token}`,
   };
-
-  // If we have a stored instance token, pass it in the headers
-  if (uazapiToken) {
-      headers['token'] = uazapiToken;
-  }
 
   const options: any = {
     method,

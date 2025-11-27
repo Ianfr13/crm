@@ -3,7 +3,10 @@ import { useState, useEffect } from 'react';
 import { 
   Users, 
   Plus, 
-  MessageCircle, 
+  Pin,
+  MessageCircle,
+  BellOff,
+  Heart,
   Mail, 
   Instagram, 
   Facebook, 
@@ -34,7 +37,34 @@ import { CRMAuthenticatedLayout } from '@/components/layout/crm-authenticated-la
 import { CreateGroupDialog } from '@/components/features/inbox/create-group-dialog';
 import { SimpleInputModal } from '@/components/modals/simple-input-modal';
 
+import { ChatContextMenu } from '@/components/features/inbox/chat-context-menu';
 import { uazapiClient } from '@/lib/api/uazapi-client';
+
+// Helper to normalize timestamps to milliseconds
+const normalizeTimestamp = (ts: any): number => {
+  if (!ts) return 0;
+  
+  // Handle if it's already a Date object (unlikely but possible)
+  if (ts instanceof Date) return ts.getTime();
+
+  const num = Number(ts);
+  
+  if (!isNaN(num) && num > 0) {
+      // Heuristic: Unix timestamps in seconds are usually 10 digits (~1.7e9)
+      // Milliseconds are 13 digits (~1.7e12)
+      // Cutoff: 1e11 (100 billion) - effectively year 5138 if seconds
+      if (num < 100000000000) {
+          return num * 1000;
+      }
+      return num;
+  }
+  
+  // Try parsing as ISO string or other date format
+  const date = new Date(ts);
+  if (!isNaN(date.getTime())) return date.getTime();
+  
+  return 0;
+};
 
 export default function InboxPage() {
   const { themeColor, isDark } = useCRMTheme();
@@ -55,6 +85,7 @@ export default function InboxPage() {
   // Popups State
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [showNewChat, setShowNewChat] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; chat: any } | null>(null);
 
   const [conversations, setConversations] = useState<any[]>([]);
   const [messages, setMessages] = useState<any[]>([]);
@@ -130,7 +161,7 @@ export default function InboxPage() {
 
   const updateConversations = (chats: any[]) => {
         const mappedChats = chats.map((chat: any) => {
-            const timestamp = chat.wa_lastMsgTimestamp || chat.last_message?.timestamp;
+            const timestamp = normalizeTimestamp(chat.wa_lastMsgTimestamp || chat.last_message?.timestamp);
             
             // Safely extract last message content
             let lastContent = chat.wa_lastMessageTextVote;
@@ -162,8 +193,8 @@ export default function InboxPage() {
                 lastMsg: typeof lastContent === 'string' ? lastContent : '...',
                 lastMsgStatus,
                 lastMsgSender,
-                time: timestamp ? new Date(Number(timestamp)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '',
-                timestamp: Number(timestamp || 0),
+                time: timestamp ? new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '',
+                timestamp: timestamp,
                 unread: chat.wa_unreadCount || chat.unread_count || 0,
                 online: true, // Mock for now
                 channel: 'whatsapp', // Uazapi defaults to WhatsApp
@@ -171,8 +202,12 @@ export default function InboxPage() {
             };
         });
         
-        // Sort by timestamp descending (newest first)
-        mappedChats.sort((a: any, b: any) => b.timestamp - a.timestamp);
+        // Sort by pinned first, then timestamp descending (newest first)
+        mappedChats.sort((a: any, b: any) => {
+            if (a.pinned && !b.pinned) return -1;
+            if (!a.pinned && b.pinned) return 1;
+            return b.timestamp - a.timestamp;
+        });
         
         setConversations(mappedChats);
   };
@@ -259,6 +294,8 @@ export default function InboxPage() {
                              finalContent = (content as any).text || (content as any).caption || 'Conteúdo de mídia';
                          }
 
+                         const timestamp = normalizeTimestamp(m.messageTimestamp || m.timestamp);
+
                          return {
                              id: m.id || m.key?.id,
                              sender: (m.fromMe || m.key?.fromMe) ? 'me' : 'other',
@@ -266,8 +303,8 @@ export default function InboxPage() {
                              senderName: m.pushName || m.notifyName || m.verifiedName || null,
                              text: String(finalContent), // Double safe
                              status: m.status || 'SENT',
-                             timestamp: Number(m.messageTimestamp || m.timestamp || 0),
-                             time: (m.messageTimestamp || m.timestamp) ? new Date(Number(m.messageTimestamp || m.timestamp) * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''
+                             timestamp: timestamp,
+                             time: timestamp ? new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''
                          };
                      }).sort((a: any, b: any) => a.timestamp - b.timestamp);
 
@@ -538,6 +575,86 @@ export default function InboxPage() {
     setShowNewChat(false);
   };
 
+  // Context Menu Actions
+  const handleContextMenu = (e: React.MouseEvent, chat: any) => {
+    e.preventDefault();
+    setContextMenu({
+        x: e.clientX,
+        y: e.clientY,
+        chat
+    });
+  };
+
+  const handleMenuAction = async (action: string, chat: any) => {
+      const chatId = chat.id;
+      try {
+          switch(action) {
+              case 'archive':
+                  await uazapiClient.chats.archiveChat(chatId);
+                  // Optimistic removal from list
+                  setConversations(prev => prev.filter(c => c.id !== chatId));
+                  if (activeChat === chatId) setActiveChat(null);
+                  break;
+              case 'mute':
+                  await uazapiClient.chats.muteChat(chatId);
+                  setConversations(prev => prev.map(c => c.id === chatId ? { ...c, muted: true } : c));
+                  break;
+              case 'unmute':
+                  await uazapiClient.chats.unmuteChat(chatId);
+                  setConversations(prev => prev.map(c => c.id === chatId ? { ...c, muted: false } : c));
+                  break;
+              case 'pin':
+                  // Local state + Re-sort
+                  setConversations(prev => {
+                      const updated = prev.map(c => c.id === chatId ? { ...c, pinned: !c.pinned } : c);
+                      // Re-sort
+                      return updated.sort((a: any, b: any) => {
+                        if (a.pinned && !b.pinned) return -1;
+                        if (!a.pinned && b.pinned) return 1;
+                        return b.timestamp - a.timestamp;
+                    });
+                  });
+                  break;
+              case 'mark_unread':
+                  // Local state only
+                  setConversations(prev => prev.map(c => c.id === chatId ? { ...c, unread: (c.unread || 0) + 1 } : c));
+                  break;
+              case 'mark_read':
+                  setConversations(prev => prev.map(c => c.id === chatId ? { ...c, unread: 0 } : c));
+                  break;
+              case 'favorite':
+                  // Local state
+                  setConversations(prev => prev.map(c => c.id === chatId ? { ...c, favorite: !c.favorite } : c));
+                  break;
+              case 'block':
+                  if (confirm(`Bloquear ${chat.name}?`)) {
+                      // Extract number from ID (remove @s.whatsapp.net)
+                      const number = chatId.split('@')[0];
+                      await uazapiClient.contacts.blockContact(number);
+                      alert('Contato bloqueado');
+                  }
+                  break;
+              case 'delete':
+                  if (confirm(`Apagar conversa com ${chat.name}?`)) {
+                      // Fallback: try to archive or just hide locally since deleteChat isn't explicit in helper
+                      // If it's a group, maybe leaveGroup?
+                      if (chatId.endsWith('@g.us')) {
+                          await uazapiClient.groups.leaveGroup(chatId);
+                      } else {
+                          // For individual, usually means deleting messages or clearing chat
+                          // We'll just hide it locally for now
+                          setConversations(prev => prev.filter(c => c.id !== chatId));
+                      }
+                      if (activeChat === chatId) setActiveChat(null);
+                  }
+                  break;
+          }
+      } catch (error) {
+          console.error(`Action ${action} failed`, error);
+          alert('Ação falhou');
+      }
+  };
+
   const filteredConversations = conversations
     .filter(c => visibleChannels.includes(c.channel))
     .filter(c => 
@@ -653,6 +770,7 @@ export default function InboxPage() {
             <div 
               key={chat.id} 
               onClick={() => setActiveChat(chat.id)}
+              onContextMenu={(e) => handleContextMenu(e, chat)}
               className={cn(
                 "p-3 flex gap-3 cursor-pointer transition-colors border-l-[3px] relative group",
                 activeChat === chat.id 
@@ -660,6 +778,9 @@ export default function InboxPage() {
                   : isDark ? "border-transparent hover:bg-zinc-800/50" : "border-transparent hover:bg-zinc-100"
               )}
             >
+              {chat.pinned && (
+                  <Pin className={cn("absolute top-1 right-1 h-3 w-3 -rotate-45", isDark ? "text-zinc-500" : "text-zinc-400")} />
+              )}
               <div className="relative">
                 <CRMAvatar 
                     initials={chat.name.slice(0, 2).toUpperCase()} 
@@ -674,14 +795,18 @@ export default function InboxPage() {
               </div>
               <div className="flex-1 min-w-0 flex flex-col justify-center">
                 <div className="flex justify-between items-baseline mb-0.5">
-                  <span className={cn("text-xs font-semibold truncate", 
-                    activeChat === chat.id 
-                      ? isDark ? "text-white" : "text-zinc-900"
-                      : isDark ? "text-zinc-300" : "text-zinc-700"
-                  )}>
-                    {chat.name}
-                  </span>
-                  <span className="text-[9px] text-zinc-500">{chat.time}</span>
+                  <div className="flex items-center gap-1 min-w-0">
+                      <span className={cn("text-xs font-semibold truncate", 
+                        activeChat === chat.id 
+                          ? isDark ? "text-white" : "text-zinc-900"
+                          : isDark ? "text-zinc-300" : "text-zinc-700"
+                      )}>
+                        {chat.name}
+                      </span>
+                      {chat.favorite && <Heart className="h-2.5 w-2.5 fill-rose-500 text-rose-500" />}
+                      {chat.muted && <BellOff className="h-2.5 w-2.5 text-zinc-400" />}
+                  </div>
+                  <span className="text-[9px] text-zinc-500 whitespace-nowrap ml-1">{chat.time}</span>
                 </div>
                 <div className="flex items-center gap-1 overflow-hidden">
                     {chat.lastMsgSender === 'me' && getStatusIcon(chat.lastMsgStatus, "h-3 w-3 min-w-[12px]")}
@@ -998,6 +1123,15 @@ export default function InboxPage() {
       </div>
 
       {/* Popups do Inbox */}
+      {contextMenu && (
+          <ChatContextMenu 
+            position={contextMenu} 
+            chat={contextMenu.chat} 
+            onClose={() => setContextMenu(null)}
+            onAction={handleMenuAction}
+            isDark={isDark}
+          />
+      )}
       <CreateGroupDialog 
           isOpen={showNewGroup}
           onClose={() => setShowNewGroup(false)}

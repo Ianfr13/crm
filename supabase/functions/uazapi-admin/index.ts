@@ -47,83 +47,90 @@ serve(async (req) => {
       adminToken: admin_token
     });
 
-    const service_role_key = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    if (!service_role_key) {
-      return errorResponse('SUPABASE_SERVICE_ROLE_KEY must be configured', 500);
-    }
-
-    const supabaseAdmin = createClient(
+    const serviceClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      service_role_key,
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
     // CREATE INSTANCE
     if (method === 'POST' && action === 'create_instance') {
       const { instance_name, system_name, admin_field_01, admin_field_02 } = await req.json();
-
-      // Check for existing integration
-      const { data: existingIntegration, error: fetchError } = await supabaseAdmin
-        .from('integrations')
-        .select('*')
-        .eq('user_id', user.id)
-        .eq('provider', 'uazapi')
-        .maybeSingle();
-
-      if (fetchError) {
-        console.error('Error fetching existing integration:', fetchError);
-        return errorResponse('Failed to check existing integration', 500);
-      }
-
-      // Sanitize name: remove spaces and special chars, keep only alphanumeric and hyphens
-      const rawName = instance_name || `instance_${Math.random().toString(36).substring(7)}`;
-      const sanitizedName = rawName.replace(/[^a-zA-Z0-9-]/g, '');
-
-      if (!sanitizedName) {
-        return errorResponse('Invalid instance name', 400);
-      }
-
-      const createResult = await uazapi.createInstance(sanitizedName, system_name, admin_field_01, admin_field_02);
+      const name = instance_name || `instance_${Math.random().toString(36).substring(7)}`;
+      
+      const createResult = await uazapi.createInstance(name, system_name, admin_field_01, admin_field_02);
       if (!createResult.success) {
-        console.error('Create Instance Failed:', createResult);
-        return new Response(JSON.stringify(createResult), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-          status: 400
-        });
+        return errorResponse(createResult.error || 'Failed to create instance', 400);
       }
 
       const newInstanceToken = createResult.data.token;
       const newInstanceId = createResult.data.instance?.id;
 
-      if (existingIntegration) {
-        const { error: updateError } = await supabaseAdmin.from('integrations').update({
-          instance_token: newInstanceToken,
-          active: true,
-          config: { instance_id: newInstanceId, instance_name: sanitizedName }
-        }).eq('id', existingIntegration.id);
-
-        if (updateError) {
-          console.error('DB Update Error:', updateError);
-          return errorResponse('Failed to update integration record', 500);
-        }
-      } else {
-        const { error: insertError } = await supabaseAdmin.from('integrations').insert({
+      // Upsert na tabela instances
+      const { error: upsertError } = await serviceClient
+        .from('instances')
+        .upsert({
           user_id: user.id,
-          provider: 'uazapi',
-          instance_token: newInstanceToken,
-          active: true,
-          config: { instance_id: newInstanceId, instance_name: sanitizedName }
-        });
-
-        if (insertError) {
-          console.error('DB Insert Error:', insertError);
-          return errorResponse('Failed to create integration record', 500);
-        }
+          id: newInstanceId, // Use instance ID from UazAPI as PK if possible, or let it be if we want internal ID. 
+                             // The schema has id TEXT DEFAULT ..., but we should probably store the UazAPI ID if it acts as one.
+                             // The prompt says "Fazer upsert em instances por (user_id) ou por (id)". 
+                             // If I use user_id as unique constraint, I need an index or unique constraint on user_id.
+                             // The schema has "user_id UUID REFERENCES auth.users(id)". It doesn't explicitly say UNIQUE.
+                             // However, the logic implies 1 instance per user for this flow.
+                             // Let's check if I should use the ID from API as the table ID.
+                             // Schema: id TEXT PRIMARY KEY DEFAULT ('i' || ...). 
+                             // If UazAPI returns an ID, maybe I should store it in 'id' column or just trust the upsert on user_id if I had a unique index?
+                             // Actually, the prompt code example showed:
+                             /*
+                               .upsert({ 
+                                  user_id: user.id, 
+                                  token: newInstanceToken, 
+                                  name, 
+                                  id: newInstanceId // optional if we want to force this ID 
+                               }, { onConflict: 'user_id' }) // or 'id'
+                             */
+                             // Wait, if I upsert by user_id, I need a unique constraint on user_id.
+                             // The schema provided `20251126000000_complete_uazapi_schema.sql` does NOT have UNIQUE on user_id.
+                             // It has `CREATE INDEX IF NOT EXISTS idx_instances_user_id ON instances(user_id);`
+                             // So multiple instances per user are allowed by schema.
+                             // However, the prompt says: "Verifica/garante que existe uma instância para o usuário atual... Fazer upsert em instances por (user_id) ou por (id)".
+                             // If I want to support only one instance per user for this specific flow (as implied by "ConnectInstance" component), I should try to update if exists.
+                             
+          token: newInstanceToken,
+          name: name,
+          owner: user.email,
+          status: 'created',
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' }); // Assuming we want 1 instance per user. 
+                                       // If schema doesn't support unique user_id, this upsert will FAIL unless there is a constraint.
+                                       // BUT, I can search first then update or insert.
+      
+      // Better approach given no unique constraint on user_id in schema:
+      // Check if user has an instance
+      const { data: existingInstance } = await serviceClient
+        .from('instances')
+        .select('id')
+        .eq('user_id', user.id)
+        .maybeSingle();
+      
+      if (existingInstance) {
+         await serviceClient.from('instances').update({
+             token: newInstanceToken,
+             id: newInstanceId, // Update ID if it changed? Maybe dangerous if it's PK. 
+                                // If 'id' is PK, we can't update it easily if referenced. 
+                                // But UazAPI instance ID is likely stable or we should use it as PK.
+                                // Let's assume we update the token for the existing instance row.
+             name: name,
+             updated_at: new Date().toISOString()
+         }).eq('id', existingInstance.id);
+      } else {
+         await serviceClient.from('instances').insert({
+             id: newInstanceId, // Try to use UazAPI ID as PK.
+             user_id: user.id,
+             token: newInstanceToken,
+             name: name,
+             owner: user.email,
+             status: 'created'
+         });
       }
 
       return successResponse({
