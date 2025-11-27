@@ -108,10 +108,17 @@ export default function LoginPage() {
                 {loading ? 'Entrando...' : 'Entrar na Plataforma'}
               </CRMButton>
   
-              <div className="flex flex-col gap-2 mt-4">
-                  <Link href="/forgot-password" className={cn("text-center text-xs hover:underline", isDark ? "text-zinc-500 hover:text-zinc-300" : "text-zinc-400 hover:text-zinc-600")}>
+              <div className="mt-4 flex flex-col items-center gap-3">
+                  <Link 
+                    href="/forgot-password" 
+                    className={cn(
+                        "text-xs hover:underline cursor-pointer z-50 relative p-2", 
+                        isDark ? "text-zinc-500 hover:text-zinc-300" : "text-zinc-400 hover:text-zinc-600"
+                    )}
+                  >
                       Esqueceu sua senha?
                   </Link>
+                  
                   <p className={cn("text-center text-[10px]", isDark ? "text-zinc-600" : "text-zinc-400")}>
                       Ao entrar, você concorda com os Termos de Uso.
                   </p>
