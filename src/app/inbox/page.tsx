@@ -118,10 +118,31 @@ export default function InboxPage() {
   const updateConversations = (chats: any[]) => {
         const mappedChats = chats.map((chat: any) => {
             const timestamp = chat.wa_lastMsgTimestamp || chat.last_message?.timestamp;
+            
+            // Safely extract last message content
+            let lastContent = chat.wa_lastMessageTextVote;
+            if (!lastContent && chat.last_message?.content) {
+                const c = chat.last_message.content;
+                if (typeof c === 'string') {
+                    lastContent = c;
+                } else if (c && typeof c === 'object') {
+                    // Handle potential object content in last_message
+                    lastContent = c.text || c.caption || (c.message?.conversation) || (c.extendedTextMessage?.text) || 'Conteúdo de mídia';
+                }
+            } else if (!lastContent && chat.last_message?.message) {
+                 // Handle nested message object in last_message root
+                 const m = chat.last_message.message;
+                 if (m) {
+                    lastContent = m.conversation || m.extendedTextMessage?.text || m.imageMessage?.caption || 'Conteúdo de mídia';
+                 }
+            }
+
+            const safeName = String(chat.name || chat.wa_name || chat.wa_contactName || chat.number || chat.id.split('@')[0] || 'Desconhecido');
+
             return {
                 id: chat.wa_chatid || chat.id,
-                name: chat.name || chat.wa_name || chat.wa_contactName || chat.number || chat.id.split('@')[0] || 'Desconhecido',
-                lastMsg: chat.wa_lastMessageTextVote || chat.last_message?.content || '...',
+                name: safeName,
+                lastMsg: typeof lastContent === 'string' ? lastContent : '...',
                 time: timestamp ? new Date(Number(timestamp)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '',
                 unread: chat.wa_unreadCount || chat.unread_count || 0,
                 online: true, // Mock for now
@@ -162,7 +183,8 @@ export default function InboxPage() {
                      msgsData = response;
                  }
 
-                 console.log("Messages fetched:", msgsData); // Debug
+                 console.log("Messages fetched (RAW):", msgsData); // Debug
+                 if (msgsData.length > 0 && msgsData[0]) console.log("First message structure:", JSON.stringify(msgsData[0]));
 
                  if (msgsData.length > 0) {
                      setMessages(msgsData.map((m: any) => {
@@ -170,38 +192,53 @@ export default function InboxPage() {
                          
                          // Fallback strategies for different message structures
                          if (!content) {
-                             if (m.content && typeof m.content === 'object' && m.content.text) {
-                                 content = m.content.text;
-                             } else if (typeof m.content === 'string') {
-                                 content = m.content;
-                             } else if (m.body) {
-                                 content = m.body;
-                             } else if (m.message?.conversation) {
-                                 content = m.message.conversation;
-                             } else if (m.message?.extendedTextMessage?.text) {
-                                 content = m.message.extendedTextMessage.text;
-                             } else if (m.message?.imageMessage?.caption) {
-                                 content = m.message.imageMessage.caption;
+                             if (m.content && typeof m.content === 'object') {
+                                 content = m.content.text || m.content.caption || (typeof m.content.message === 'string' ? m.content.message : '');
                              } 
+                             
+                             if (!content && typeof m.content === 'string') {
+                                 content = m.content;
+                             } else if (!content && m.body) {
+                                 content = m.body;
+                             } else if (!content && m.message) {
+                                 if (m.message.conversation) content = m.message.conversation;
+                                 else if (m.message.extendedTextMessage?.text) content = m.message.extendedTextMessage.text;
+                                 else if (m.message.imageMessage?.caption) content = m.message.imageMessage.caption;
+                                 else if (m.message.documentMessage?.caption) content = m.message.documentMessage.caption;
+                                 else if (m.message.videoMessage?.caption) content = m.message.videoMessage.caption;
+                             }
                          }
 
                          // Handle media types labels if still empty
                          if (!content) {
                              const type = m.messageType || m.type;
-                             if (type === 'ImageMessage' || type === 'image') content = '📷 Imagem';
-                             else if (type === 'AudioMessage' || type === 'audio') content = '🎤 Áudio';
-                             else if (type === 'VideoMessage' || type === 'video') content = '🎥 Vídeo';
-                             else if (type === 'DocumentMessage' || type === 'document') content = '📄 Documento';
-                             else if (type === 'StickerMessage' || type === 'sticker') content = '👾 Figurinha';
-                             else if (type === 'ContactMessage') content = '👤 Contato';
-                             else if (type === 'LocationMessage') content = '📍 Localização';
-                             else content = 'Mensagem';
+                             // Defensive check if type is an object (it shouldn't be, but API...)
+                             if (typeof type === 'string') {
+                                if (type === 'ImageMessage' || type === 'image') content = '📷 Imagem';
+                                else if (type === 'AudioMessage' || type === 'audio') content = '🎤 Áudio';
+                                else if (type === 'VideoMessage' || type === 'video') content = '🎥 Vídeo';
+                                else if (type === 'DocumentMessage' || type === 'document') content = '📄 Documento';
+                                else if (type === 'StickerMessage' || type === 'sticker') content = '👾 Figurinha';
+                                else if (type === 'ContactMessage') content = '👤 Contato';
+                                else if (type === 'LocationMessage') content = '📍 Localização';
+                                else content = 'Mensagem';
+                             } else {
+                                 content = 'Mensagem';
+                             }
+                         }
+
+                         // Final safety check: ensure content is a string and not an object structure
+                         let finalContent = String(content || '');
+                         if (content && typeof content === 'object') {
+                             // If somehow an object slipped through, try to find text in common places or stringify carefully
+                             // But prevent passing [object Object] if possible, prefer a label
+                             finalContent = (content as any).text || (content as any).caption || 'Conteúdo de mídia';
                          }
 
                          return {
                              id: m.id || m.key?.id,
                              sender: (m.fromMe || m.key?.fromMe) ? 'me' : 'other',
-                             text: String(content), // Ensure string
+                             text: String(finalContent), // Double safe
                              time: (m.messageTimestamp || m.timestamp) ? new Date(Number(m.messageTimestamp || m.timestamp) * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''
                          };
                      }));
