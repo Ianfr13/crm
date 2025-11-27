@@ -39,6 +39,7 @@ interface SettingsModalProps {
 export const SettingsModal = ({ isOpen, onClose, isDark, themeColor, setThemeColor, toggleTheme, onAddUser }: SettingsModalProps) => {
   const supabase = createClient();
   const [activeTab, setActiveTab] = useState('perfil');
+  const [isAdmin, setIsAdmin] = useState(false);
   // WhatsApp Integration State
   const [connectionStatus, setConnectionStatus] = useState<'disconnected' | 'connecting' | 'connected' | 'qr_ready'>('disconnected');
   const [qrCodeData, setQrCodeData] = useState<string | null>(null);
@@ -81,21 +82,40 @@ export const SettingsModal = ({ isOpen, onClose, isDark, themeColor, setThemeCol
   const checkInstanceStatus = async () => {
       try {
           setErrorMessage(null);
-          const data = await uazapiClient.instance.getInstanceStatus();
-          const status = data?.instance?.status || data?.status;
-          
-          if (status === 'open' || status === 'connected') {
+          const res = await uazapiClient.instance.getInstanceStatus();
+          console.log('SettingsModal status response:', res);
+
+          let statusString = 'unknown';
+          if (res?.instance?.status) {
+              statusString = res.instance.status;
+          } else if (res?.status?.connected === true) {
+              statusString = 'connected';
+          } else if (typeof res?.status === 'string') {
+              statusString = res.status;
+          } else if (res?.connected === true) {
+              statusString = 'connected';
+          } else if (res?.data?.instance?.status) {
+              statusString = res.data.instance.status;
+          } else if (res?.data?.status?.connected === true) {
+               statusString = 'connected';
+          }
+
+          if (typeof statusString === 'string') {
+              statusString = statusString.toLowerCase();
+          }
+
+          if (statusString === 'open' || statusString === 'connected') {
               setConnectionStatus('connected');
-              setInstanceData(data?.instance);
+              setInstanceData(res.instance || res.data?.instance || {});
               setQrCodeData(null);
-          } else if (data?.qrcode || data?.instance?.qrcode) {
+          } else if (res?.qrcode || res?.instance?.qrcode || res?.data?.qrcode || res?.data?.instance?.qrcode) {
               setConnectionStatus('qr_ready');
-              let qr = data.qrcode || data.instance.qrcode;
-              if (!qr.startsWith('data:image')) {
+              let qr = res.qrcode || res.instance?.qrcode || res.data?.qrcode || res.data?.instance?.qrcode;
+              if (qr && !qr.startsWith('data:image')) {
                   qr = `data:image/png;base64,${qr}`;
               }
               setQrCodeData(qr);
-          } else if (status === 'connecting' || status === 'initializing') {
+          } else if (statusString === 'connecting' || statusString === 'initializing') {
               setConnectionStatus('connecting');
           } else {
               setConnectionStatus('disconnected');
@@ -213,19 +233,43 @@ export const SettingsModal = ({ isOpen, onClose, isDark, themeColor, setThemeCol
                   email: user.email,
                   role: user.user_metadata?.role || 'User'
               });
+              const role = (user.user_metadata?.role || '').toLowerCase();
+              setIsAdmin(['admin', 'manager', 'owner'].includes(role));
           }
       };
 
       const fetchTeam = async () => {
-          // Mock fetch for team since we don't have a direct endpoint yet, 
-          // but we will try to use a hypothetical listUsers if available or just empty
-          // For now, we show only the current user if no team endpoint
-          // setUsers([]); 
-          // Actually, let's try to fetch from profiles if it existed, but assuming it doesn't, we might just show the current user in the list for now
           setLoadingUsers(true);
           try {
-             // Placeholder for team fetching logic
-             setUsers([]); 
+             // Attempt to fetch from profiles table
+             const { data: profiles, error } = await supabase
+                .from('profiles')
+                .select('*');
+             
+             if (error) throw error;
+
+             if (profiles) {
+                 setUsers(profiles.map((p: any) => ({
+                     id: p.id,
+                     name: p.full_name || p.name || p.email?.split('@')[0] || 'Usuário',
+                     email: p.email,
+                     role: p.role || 'User',
+                     status: p.status || 'active'
+                 })));
+             }
+          } catch (error) {
+             console.warn("Error fetching team (profiles table might not exist), falling back to current user:", error);
+             // Fallback: show current user if fetch fails
+             const { data: { user } } = await supabase.auth.getUser();
+             if (user) {
+                 setUsers([{
+                     id: user.id,
+                     name: user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split('@')[0],
+                     email: user.email,
+                     role: user.user_metadata?.role || 'User',
+                     status: 'active'
+                 }]);
+             }
           } finally {
              setLoadingUsers(false);
           }
@@ -239,9 +283,9 @@ export const SettingsModal = ({ isOpen, onClose, isDark, themeColor, setThemeCol
 
   const tabs = [
       { id: 'perfil', icon: Users, label: 'Meu Perfil' },
-      { id: 'users', icon: UserCog, label: 'Equipe' }, 
+      { id: 'users', icon: UserCog, label: 'Equipe', hidden: !isAdmin }, 
       { id: 'whatsapp', icon: Smartphone, label: 'WhatsApp' },
-      { id: 'social', icon: Globe, label: 'Redes Sociais' },
+      { id: 'social', icon: Globe, label: 'Redes Sociais', hidden: !isAdmin },
       { id: 'aparencia', icon: Palette, label: 'Aparência' },
   ];
 
@@ -323,7 +367,7 @@ export const SettingsModal = ({ isOpen, onClose, isDark, themeColor, setThemeCol
                 <h3 className="font-bold text-xs uppercase tracking-wider text-zinc-500">Ajustes</h3>
             </div>
             <div className="p-2 space-y-1">
-                {tabs.map(tab => (
+                {tabs.filter(tab => !tab.hidden).map(tab => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
@@ -459,13 +503,31 @@ export const SettingsModal = ({ isOpen, onClose, isDark, themeColor, setThemeCol
                         <div className={cn("p-4 rounded-xl border bg-white relative min-w-[200px] min-h-[200px] flex items-center justify-center", isDark ? "border-zinc-700" : "border-zinc-200")}>
                             {connectionStatus === 'connected' ? (
                                 <div className="flex flex-col items-center text-emerald-500 animate-in fade-in zoom-in duration-300">
-                                    <div className="relative">
-                                        <div className="absolute inset-0 bg-emerald-500 blur-xl opacity-20 rounded-full"></div>
-                                        <CheckCircle2 className="h-20 w-20 mb-3 relative z-10" />
+                                    <div className="relative mb-3">
+                                        {instanceData?.profilePicUrl ? (
+                                            <div className="relative">
+                                                <div className="absolute inset-0 bg-emerald-500 blur-xl opacity-20 rounded-full"></div>
+                                                <img 
+                                                    src={instanceData.profilePicUrl} 
+                                                    alt="Profile" 
+                                                    className="h-20 w-20 rounded-full object-cover border-4 border-emerald-100 shadow-lg relative z-10"
+                                                />
+                                                <div className="absolute bottom-0 right-0 z-20 bg-emerald-500 rounded-full p-1 border-2 border-white">
+                                                    <CheckCircle2 className="h-3 w-3 text-white" />
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="relative">
+                                                <div className="absolute inset-0 bg-emerald-500 blur-xl opacity-20 rounded-full"></div>
+                                                <CheckCircle2 className="h-20 w-20 relative z-10" />
+                                            </div>
+                                        )}
                                     </div>
-                                    <span className="font-bold text-lg">Conectado!</span>
+                                    <span className="font-bold text-lg">
+                                        {instanceData?.profileName || 'Conectado!'}
+                                    </span>
                                     <span className="text-xs text-zinc-500 mt-1 font-mono bg-zinc-100 px-2 py-1 rounded dark:bg-zinc-800 dark:text-zinc-400">
-                                        {instanceData?.name || instanceData?.profileName || instanceData?.id?.split('@')[0] || instanceData?.number || 'Instância Ativa'}
+                                        {instanceData?.owner?.split('@')[0] || instanceData?.id?.split('@')[0] || instanceData?.phone || instanceData?.number || 'Instância Ativa'}
                                     </span>
                                 </div>
                             ) : qrCodeData ? (
