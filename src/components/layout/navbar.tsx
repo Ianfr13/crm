@@ -14,20 +14,26 @@ export function Navbar() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [darkMode, setDarkMode] = useState(false)
 
-  useEffect(() => {
-    getUser()
-    checkDarkMode()
-  }, [])
-
   const getUser = async () => {
-    const { data: { user } } = await supabase.auth.getUser()
-    setUser(user)
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser()
+      if (error) throw error
+      setUser(user)
+    } catch (error) {
+      console.error('Failed to get user', error)
+      setUser(null)
+    }
   }
 
   const checkDarkMode = () => {
     const isDark = document.documentElement.classList.contains('dark')
     setDarkMode(isDark)
   }
+
+  useEffect(() => {
+    getUser()
+    checkDarkMode()
+  }, [])
 
   const toggleDarkMode = () => {
     if (document.documentElement.classList.contains('dark')) {

@@ -35,7 +35,13 @@ async function invokeFunction(functionName: string, action: string, body?: any, 
 
   const response = await supabase.functions.invoke(url, options)
 
-  if (response.error) throw response.error
+  if (response.error) {
+      const message = response.error.message || response.error.toString();
+      // Create a clearer error object
+      const err: any = new Error(message);
+      err.originalError = response.error;
+      throw err;
+  }
   return response.data
 }
 
