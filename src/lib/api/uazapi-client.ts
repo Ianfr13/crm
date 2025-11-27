@@ -20,8 +20,19 @@ async function invokeFunction(functionName: string, action: string, body?: any, 
   let requestBody = body
 
   if (method === 'GET' && body) {
-    const params = new URLSearchParams(body)
-    url += `&${params.toString()}`
+    // Filter out undefined or null values from body
+    const cleanBody = Object.entries(body).reduce((acc, [key, value]) => {
+      if (value !== undefined && value !== null) {
+        acc[key] = String(value);
+      }
+      return acc;
+    }, {} as Record<string, string>);
+
+    const params = new URLSearchParams(cleanBody)
+    const paramString = params.toString();
+    if (paramString) {
+        url += `&${paramString}`
+    }
     requestBody = undefined
   }
 
