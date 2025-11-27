@@ -71,11 +71,6 @@ export const CRMSidebar = () => {
             >
               <item.icon className={cn("h-4 w-4 transition-colors", isActive ? `text-${themeColor}-500` : "text-zinc-500 group-hover:text-zinc-400")} />
               {item.label}
-              {item.badge && (
-                <span className={`ml-auto bg-${themeColor}-500 text-white text-[9px] font-bold px-1.5 py-0 rounded-full`}>
-                  {item.badge}
-                </span>
-              )}
               {isActive && <div className={`absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-${themeColor}-500 rounded-r-full`} />}
             </button>
           );
