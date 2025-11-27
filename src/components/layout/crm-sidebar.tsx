@@ -24,7 +24,7 @@ export const CRMSidebar = () => {
 
   const menuItems = [
     { id: 'dashboard', path: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { id: 'inbox', path: '/inbox', icon: MessageSquare, label: 'Inbox', badge: 3 },
+    { id: 'inbox', path: '/inbox', icon: MessageSquare, label: 'Inbox' },
     { id: 'contacts', path: '/contacts', icon: Users, label: 'Contatos' },
     { id: 'pipeline', path: '/pipeline', icon: KanbanSquare, label: 'Pipeline' },
     { id: 'integration', path: '/integration', icon: Zap, label: 'Integração' },

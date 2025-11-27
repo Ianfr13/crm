@@ -125,7 +125,8 @@ export default function InboxPage() {
                 time: timestamp ? new Date(Number(timestamp)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '',
                 unread: chat.wa_unreadCount || chat.unread_count || 0,
                 online: true, // Mock for now
-                channel: 'whatsapp' // Uazapi defaults to WhatsApp
+                channel: 'whatsapp', // Uazapi defaults to WhatsApp
+                image: chat.imagePreview || chat.image || null
             };
         });
         setConversations(mappedChats);
@@ -316,7 +317,12 @@ export default function InboxPage() {
               )}
             >
               <div className="relative">
-                <CRMAvatar initials={chat.name.slice(0, 2).toUpperCase()} size="md" color={isDark ? "bg-zinc-700" : "bg-zinc-200 text-zinc-700"} />
+                <CRMAvatar 
+                    initials={chat.name.slice(0, 2).toUpperCase()} 
+                    size="md" 
+                    color={isDark ? "bg-zinc-700" : "bg-zinc-200 text-zinc-700"} 
+                    src={chat.image}
+                />
                 {chat.online && <div className={cn("absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2", isDark ? "ring-zinc-900" : "ring-white")} />}
                 <div className="absolute -top-1 -left-1 bg-zinc-900 rounded-full p-0.5 border border-zinc-800">
                     {getChannelIcon(chat.channel)}
@@ -350,6 +356,7 @@ export default function InboxPage() {
                     initials={conversations.find(c => c.id === activeChat)?.name.slice(0,2).toUpperCase() || "?"} 
                     size="sm" 
                     color={isDark ? "bg-zinc-700" : "bg-zinc-200 text-zinc-700"} 
+                    src={conversations.find(c => c.id === activeChat)?.image}
                 />
                 <div>
                     <span className={cn("font-bold text-sm block", isDark ? "text-white" : "text-zinc-900")}>
@@ -382,6 +389,7 @@ export default function InboxPage() {
                             initials={conversations.find(c => c.id === activeChat)?.name.slice(0,2).toUpperCase() || "?"} 
                             size="sm" 
                             color={isDark ? "bg-zinc-700" : "bg-zinc-200 text-zinc-600"} 
+                            src={conversations.find(c => c.id === activeChat)?.image}
                          />
                      )}
                      <div className={cn(
@@ -461,6 +469,7 @@ export default function InboxPage() {
                             size="xl" 
                             themeColor={themeColor} 
                             className="mx-auto mb-2" 
+                            src={conversations.find(c => c.id === activeChat)?.image}
                         />
                         <h3 className={cn("font-bold text-sm", isDark ? "text-white" : "text-zinc-900")}>
                             {conversations.find(c => c.id === activeChat)?.name || "Desconhecido"}
