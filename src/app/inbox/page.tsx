@@ -315,83 +315,111 @@ export default function InboxPage() {
 
       {/* Coluna 2: Chat Area */}
       <div className={cn("flex-1 flex flex-col min-w-0", isDark ? "bg-zinc-950/30" : "bg-zinc-50/50")}>
-        <div className={cn("h-14 px-4 border-b flex justify-between items-center backdrop-blur-md", isDark ? "border-zinc-800 bg-zinc-900/50" : "border-zinc-200 bg-white/80")}>
-          <div className="flex items-center gap-3">
-            <CRMAvatar initials="AS" size="sm" color={isDark ? "bg-zinc-700" : "bg-zinc-200 text-zinc-700"} />
-            <div>
-                <span className={cn("font-bold text-sm block", isDark ? "text-white" : "text-zinc-900")}>Ana Souza</span>
-                <span className="text-[10px] text-emerald-500 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Online</span>
-            </div>
-          </div>
-          <div className="flex gap-1">
-            <CRMButton variant="ghost" size="icon" isDark={isDark} className="h-8 w-8"><Phone className="h-4 w-4" /></CRMButton>
-            <CRMButton variant="ghost" size="icon" isDark={isDark} className="h-8 w-8"><MoreVertical className="h-4 w-4" /></CRMButton>
-          </div>
-        </div>
-
-        <div className="flex-1 p-4 space-y-4 overflow-y-auto text-xs">
-          <div className="flex justify-center">
-            <span className={cn("text-[10px] px-2 py-0.5 rounded-full border opacity-70", isDark ? "bg-zinc-900 border-zinc-800" : "bg-zinc-100 border-zinc-200")}>Hoje</span>
-          </div>
-          
-          <div className="flex gap-2">
-             <CRMAvatar initials="AS" size="sm" color={isDark ? "bg-zinc-700" : "bg-zinc-200 text-zinc-600"} />
-             <div className={cn("px-3 py-2 rounded-xl rounded-tl-none max-w-sm shadow-sm", isDark ? "bg-zinc-800 text-zinc-200" : "bg-white text-zinc-800 border border-zinc-100")}>
-                <p>Olá! Gostaria de saber mais sobre a integração.</p>
-                <span className="text-[9px] text-zinc-500 mt-1 block">10:28</span>
-             </div>
-          </div>
-
-          <div className="flex gap-2 flex-row-reverse">
-             <div className={`bg-${themeColor}-600 text-white px-3 py-2 rounded-xl rounded-tr-none max-w-sm shadow-sm`}>
-                <p>Claro, Ana! Nossa API permite envio de mensagens e automação.</p>
-                <div className="flex items-center justify-end gap-1 mt-1">
-                  <span className={`text-[9px] text-${themeColor}-100 opacity-80`}>10:29</span>
-                  <CheckCircle2 className={`h-2.5 w-2.5 text-${themeColor}-100 opacity-80`} />
+        {activeChat ? (
+          <>
+            <div className={cn("h-14 px-4 border-b flex justify-between items-center backdrop-blur-md", isDark ? "border-zinc-800 bg-zinc-900/50" : "border-zinc-200 bg-white/80")}>
+              <div className="flex items-center gap-3">
+                <CRMAvatar 
+                    initials={conversations.find(c => c.id === activeChat)?.name.slice(0,2).toUpperCase() || "?"} 
+                    size="sm" 
+                    color={isDark ? "bg-zinc-700" : "bg-zinc-200 text-zinc-700"} 
+                />
+                <div>
+                    <span className={cn("font-bold text-sm block", isDark ? "text-white" : "text-zinc-900")}>
+                        {conversations.find(c => c.id === activeChat)?.name || "Desconhecido"}
+                    </span>
+                    <span className="text-[10px] text-emerald-500 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Online</span>
                 </div>
-             </div>
-          </div>
-        </div>
+              </div>
+              <div className="flex gap-1">
+                <CRMButton variant="ghost" size="icon" isDark={isDark} className="h-8 w-8"><Phone className="h-4 w-4" /></CRMButton>
+                <CRMButton variant="ghost" size="icon" isDark={isDark} className="h-8 w-8"><MoreVertical className="h-4 w-4" /></CRMButton>
+              </div>
+            </div>
 
-        <div className={cn("p-3 border-t", isDark ? "bg-zinc-900/50 border-zinc-800" : "bg-white border-zinc-200")}>
-           <div className="relative flex items-center gap-2">
-             <CRMButton variant="ghost" size="icon" isDark={isDark} className="h-8 w-8 text-zinc-400 hover:text-foreground"><Plus className="h-4 w-4" /></CRMButton>
-             <input 
-               type="text" 
-               placeholder="Mensagem..." 
-               onKeyDown={(e) => {
-                   if (e.key === 'Enter') {
-                       const target = e.target as HTMLInputElement;
-                       handleSendMessage(target.value);
-                       target.value = '';
-                   }
-               }}
-               className={cn(
-                 "flex-1 border rounded-lg px-3 py-2 text-xs transition-all focus:outline-none focus:ring-1",
-                 isDark 
-                    ? `bg-zinc-950 border-zinc-800 text-white placeholder:text-zinc-600 focus:border-${themeColor}-500 focus:ring-${themeColor}-500`
-                    : `bg-zinc-50 border-zinc-200 text-zinc-900 placeholder:text-zinc-500 focus:border-${themeColor}-500 focus:ring-${themeColor}-500`
-               )}
-             />
-             <CRMButton 
-                className="h-8 w-8 rounded-lg p-0" 
-                themeColor={themeColor} 
-                isDark={isDark}
-                onClick={() => {
-                    const input = document.querySelector('input[placeholder="Mensagem..."]') as HTMLInputElement;
-                    if (input && input.value) {
-                        handleSendMessage(input.value);
-                        input.value = '';
-                    }
-                }}
-            >
-                <Send className="h-3.5 w-3.5 ml-0.5" />
-            </CRMButton>
-           </div>
-        </div>
+            <div className="flex-1 p-4 space-y-4 overflow-y-auto text-xs">
+              <div className="flex justify-center">
+                <span className={cn("text-[10px] px-2 py-0.5 rounded-full border opacity-70", isDark ? "bg-zinc-900 border-zinc-800" : "bg-zinc-100 border-zinc-200")}>Hoje</span>
+              </div>
+              
+              {messages.length === 0 && (
+                  <div className="text-center text-zinc-500 mt-10">
+                      Nenhuma mensagem nesta conversa.
+                  </div>
+              )}
+
+              {messages.map((msg) => (
+                  <div key={msg.id} className={cn("flex gap-2", msg.sender === 'me' ? "flex-row-reverse" : "")}>
+                     {msg.sender !== 'me' && (
+                         <CRMAvatar 
+                            initials={conversations.find(c => c.id === activeChat)?.name.slice(0,2).toUpperCase() || "?"} 
+                            size="sm" 
+                            color={isDark ? "bg-zinc-700" : "bg-zinc-200 text-zinc-600"} 
+                         />
+                     )}
+                     <div className={cn(
+                         "px-3 py-2 rounded-xl max-w-sm shadow-sm", 
+                         msg.sender === 'me' 
+                            ? `bg-${themeColor}-600 text-white rounded-tr-none`
+                            : (isDark ? "bg-zinc-800 text-zinc-200 rounded-tl-none" : "bg-white text-zinc-800 border border-zinc-100 rounded-tl-none")
+                     )}>
+                        <p>{msg.text}</p>
+                        <div className={cn("flex items-center gap-1 mt-1", msg.sender === 'me' ? "justify-end" : "")}>
+                          <span className={cn("text-[9px]", msg.sender === 'me' ? `text-${themeColor}-100 opacity-80` : "text-zinc-500")}>{msg.time}</span>
+                          {msg.sender === 'me' && <CheckCircle2 className={cn("h-2.5 w-2.5", `text-${themeColor}-100 opacity-80`)} />}
+                        </div>
+                     </div>
+                  </div>
+              ))}
+            </div>
+
+            <div className={cn("p-3 border-t", isDark ? "bg-zinc-900/50 border-zinc-800" : "bg-white border-zinc-200")}>
+               <div className="relative flex items-center gap-2">
+                 <CRMButton variant="ghost" size="icon" isDark={isDark} className="h-8 w-8 text-zinc-400 hover:text-foreground"><Plus className="h-4 w-4" /></CRMButton>
+                 <input 
+                   type="text" 
+                   placeholder="Mensagem..." 
+                   onKeyDown={(e) => {
+                       if (e.key === 'Enter') {
+                           const target = e.target as HTMLInputElement;
+                           handleSendMessage(target.value);
+                           target.value = '';
+                       }
+                   }}
+                   className={cn(
+                     "flex-1 border rounded-lg px-3 py-2 text-xs transition-all focus:outline-none focus:ring-1",
+                     isDark 
+                        ? `bg-zinc-950 border-zinc-800 text-white placeholder:text-zinc-600 focus:border-${themeColor}-500 focus:ring-${themeColor}-500`
+                        : `bg-zinc-50 border-zinc-200 text-zinc-900 placeholder:text-zinc-500 focus:border-${themeColor}-500 focus:ring-${themeColor}-500`
+                   )}
+                 />
+                 <CRMButton 
+                    className="h-8 w-8 rounded-lg p-0" 
+                    themeColor={themeColor} 
+                    isDark={isDark}
+                    onClick={() => {
+                        const input = document.querySelector('input[placeholder="Mensagem..."]') as HTMLInputElement;
+                        if (input && input.value) {
+                            handleSendMessage(input.value);
+                            input.value = '';
+                        }
+                    }}
+                >
+                    <Send className="h-3.5 w-3.5 ml-0.5" />
+                </CRMButton>
+               </div>
+            </div>
+          </>
+        ) : (
+            <div className="flex flex-col items-center justify-center h-full text-zinc-400">
+                <MessageSquare className="h-12 w-12 mb-3 opacity-20" />
+                <p className="text-sm font-medium">Selecione uma conversa</p>
+                <p className="text-xs opacity-50">Escolha um contato à esquerda para iniciar o atendimento.</p>
+            </div>
+        )}
       </div>
 
-      {/* Coluna 3: Info do Lead e Orientações (RESTAURADA) */}
+      {/* Coluna 3: Info do Lead e Orientações (RESTAURADA) */}\n
       <div className={cn("w-72 border-l flex flex-col hidden xl:flex", isDark ? "border-zinc-800 bg-zinc-900/50" : "border-zinc-200 bg-white")}>
           <div className={cn("h-14 px-4 border-b flex items-center font-bold text-xs", isDark ? "border-zinc-800 text-zinc-400" : "border-zinc-200 text-zinc-600")}>
               Detalhes do Lead
