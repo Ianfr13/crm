@@ -24,8 +24,9 @@ export async function GET(request: NextRequest) {
             })
           },
           remove(name: string, options: CookieOptions) {
-            request.cookies.delete({
+            request.cookies.set({
               name,
+              value: '',
               ...options,
             })
           },
