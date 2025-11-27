@@ -919,7 +919,7 @@ export default function InboxPage() {
                                             <div className="flex items-center gap-2 overflow-hidden">
                                                 <CRMAvatar 
                                                     initials={member.name ? member.name.slice(0,2).toUpperCase() : member.id.slice(0,2)} 
-                                                    size="xs" 
+                                                    size="sm" 
                                                     className="h-6 w-6"
                                                     src={member.image}
                                                 />
