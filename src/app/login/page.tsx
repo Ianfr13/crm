@@ -7,6 +7,7 @@ import { Mail, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { CRMButton } from '@/components/ui/crm-button'
 import { useCRMTheme } from '@/providers/crm-theme-provider'
+import Link from 'next/link'
 
 export default function LoginPage() {
     const [email, setEmail] = useState('')
@@ -107,9 +108,14 @@ export default function LoginPage() {
                 {loading ? 'Entrando...' : 'Entrar na Plataforma'}
               </CRMButton>
   
-              <p className={cn("text-center text-[10px] mt-4", isDark ? "text-zinc-600" : "text-zinc-400")}>
-                  Ao entrar, você concorda com os Termos de Uso.
-              </p>
+              <div className="flex flex-col gap-2 mt-4">
+                  <Link href="/forgot-password" className={cn("text-center text-xs hover:underline", isDark ? "text-zinc-500 hover:text-zinc-300" : "text-zinc-400 hover:text-zinc-600")}>
+                      Esqueceu sua senha?
+                  </Link>
+                  <p className={cn("text-center text-[10px]", isDark ? "text-zinc-600" : "text-zinc-400")}>
+                      Ao entrar, você concorda com os Termos de Uso.
+                  </p>
+              </div>
             </div>
          </div>
       </div>
