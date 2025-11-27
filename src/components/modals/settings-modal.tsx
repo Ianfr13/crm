@@ -249,8 +249,17 @@ export const SettingsModal = ({ isOpen, onClose, isDark, themeColor, setThemeCol
       const role = user?.user_metadata?.role || 'User';
       
       // Check for admin role (case-insensitive)
-      if (String(role).toLowerCase() !== 'admin') {
-          alert('Apenas administradores podem convidar membros.');
+      // Note: 'authenticated' is the Supabase auth role, but we are looking for the 'role' in user_metadata.
+      // The user's metadata must explicitly have role: 'Admin' (or similar).
+      // If the user currently has "role": "authenticated" in their JWT, it means they don't have the custom "role" metadata set yet.
+      // To fix this for the current user, we should update their metadata to 'Admin' via Supabase dashboard or a one-time script.
+      // For now, we enforce the strict check as requested.
+      
+      const userRole = String(role || '').toLowerCase();
+      const allowedRoles = ['admin', 'manager', 'owner']; 
+      
+      if (!allowedRoles.includes(userRole)) {
+          alert(`Permissão negada. Seu cargo atual (${role}) não permite convidar membros. Necessário: Admin, Manager ou Owner.`);
           return;
       }
 

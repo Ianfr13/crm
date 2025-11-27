@@ -262,6 +262,8 @@ export default function InboxPage() {
                          return {
                              id: m.id || m.key?.id,
                              sender: (m.fromMe || m.key?.fromMe) ? 'me' : 'other',
+                             senderId: m.participant || m.key?.participant || m.key?.remoteJid || '',
+                             senderName: m.pushName || m.notifyName || m.verifiedName || null,
                              text: String(finalContent), // Double safe
                              status: m.status || 'SENT',
                              timestamp: Number(m.messageTimestamp || m.timestamp || 0),
@@ -329,10 +331,14 @@ export default function InboxPage() {
                           return { id: m, admin: false, name: null };
                       }
                       // Handle various field names for participants
+                      // The API seems to return 'DisplayName' which might be empty for non-contacts or non-business
+                      // If DisplayName is empty, we should treat it as null so the UI falls back to ID
+                      const name = m.name || m.notify || m.verifiedName || m.pushName || m.DisplayName || null;
+                      
                       return {
-                          id: m.id || m.jid || m.number || 'unknown',
-                          admin: m.admin === 'admin' || m.admin === 'superadmin' || m.admin === true || m.isAdmin === true || m.isSuperAdmin === true,
-                          name: m.name || m.notify || m.verifiedName || m.pushName || null,
+                          id: m.id || m.jid || m.number || m.JID || m.PhoneNumber || 'unknown',
+                          admin: m.admin === 'admin' || m.admin === 'superadmin' || m.admin === true || m.isAdmin === true || m.isSuperAdmin === true || m.IsAdmin === true || m.IsSuperAdmin === true,
+                          name: (name && name.trim() !== '') ? name : null,
                           image: m.imgUrl || m.image || m.profilePictureUrl || null
                       };
                   });
@@ -739,6 +745,11 @@ export default function InboxPage() {
                             ? `bg-${themeColor}-600 text-white rounded-tr-none`
                             : (isDark ? "bg-zinc-800 text-zinc-200 rounded-tl-none" : "bg-white text-zinc-800 border border-zinc-100 rounded-tl-none")
                      )}>
+                        {msg.sender !== 'me' && String(activeChat).endsWith('@g.us') && (
+                            <p className={cn("text-[10px] font-bold mb-0.5 opacity-80", isDark ? "text-zinc-400" : "text-zinc-500")}>
+                                {(msg.senderName && msg.senderName.trim() !== '') ? msg.senderName : (msg.senderId ? msg.senderId.split('@')[0] : "Membro")}
+                            </p>
+                        )}
                         <p>{msg.text}</p>
                         <div className={cn("flex items-center gap-1 mt-1", msg.sender === 'me' ? "justify-end" : "")}>
                           <span className={cn("text-[9px]", msg.sender === 'me' ? `text-${themeColor}-100 opacity-80` : "text-zinc-500")}>{msg.time}</span>
@@ -927,11 +938,13 @@ export default function InboxPage() {
                                                     <span className={cn("text-xs truncate w-32", isDark ? "text-zinc-300" : "text-zinc-700")}>
                                                         {member.name || member.id.split('@')[0]}
                                                     </span>
-                                                    <span className="text-[9px] text-zinc-500 truncate">
-                                                        {member.id.split('@')[0]}
-                                                    </span>
+                                                    {member.name && (
+                                                        <span className="text-[9px] text-zinc-500 truncate">
+                                                            {member.id.split('@')[0]}
+                                                        </span>
+                                                    )}
                                                     {member.admin && (
-                                                        <span className="text-[9px] text-emerald-500 font-medium">Admin</span>
+                                                        <span className="text-[9px] text-emerald-500 font-medium block">Admin</span>
                                                     )}
                                                 </div>
                                             </div>
