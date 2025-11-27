@@ -165,12 +165,46 @@ export default function InboxPage() {
                  console.log("Messages fetched:", msgsData); // Debug
 
                  if (msgsData.length > 0) {
-                     setMessages(msgsData.map((m: any) => ({
-                         id: m.id || m.key?.id,
-                         sender: (m.fromMe || m.key?.fromMe) ? 'me' : 'other',
-                         text: m.text || m.content?.text || m.content || m.body || m.message?.conversation || m.message?.extendedTextMessage?.text || m.message?.imageMessage?.caption || 'Mídia/Outro',
-                         time: (m.messageTimestamp || m.timestamp) ? new Date(Number(m.messageTimestamp || m.timestamp)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''
-                     })));
+                     setMessages(msgsData.map((m: any) => {
+                         let content = m.text;
+                         
+                         // Fallback strategies for different message structures
+                         if (!content) {
+                             if (m.content && typeof m.content === 'object' && m.content.text) {
+                                 content = m.content.text;
+                             } else if (typeof m.content === 'string') {
+                                 content = m.content;
+                             } else if (m.body) {
+                                 content = m.body;
+                             } else if (m.message?.conversation) {
+                                 content = m.message.conversation;
+                             } else if (m.message?.extendedTextMessage?.text) {
+                                 content = m.message.extendedTextMessage.text;
+                             } else if (m.message?.imageMessage?.caption) {
+                                 content = m.message.imageMessage.caption;
+                             } 
+                         }
+
+                         // Handle media types labels if still empty
+                         if (!content) {
+                             const type = m.messageType || m.type;
+                             if (type === 'ImageMessage' || type === 'image') content = '📷 Imagem';
+                             else if (type === 'AudioMessage' || type === 'audio') content = '🎤 Áudio';
+                             else if (type === 'VideoMessage' || type === 'video') content = '🎥 Vídeo';
+                             else if (type === 'DocumentMessage' || type === 'document') content = '📄 Documento';
+                             else if (type === 'StickerMessage' || type === 'sticker') content = '👾 Figurinha';
+                             else if (type === 'ContactMessage') content = '👤 Contato';
+                             else if (type === 'LocationMessage') content = '📍 Localização';
+                             else content = 'Mensagem';
+                         }
+
+                         return {
+                             id: m.id || m.key?.id,
+                             sender: (m.fromMe || m.key?.fromMe) ? 'me' : 'other',
+                             text: String(content), // Ensure string
+                             time: (m.messageTimestamp || m.timestamp) ? new Date(Number(m.messageTimestamp || m.timestamp) * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''
+                         };
+                     }));
                  } else {
                     setMessages([]); // Clear messages if empty
                  }
