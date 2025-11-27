@@ -48,15 +48,18 @@ export default function InboxPage() {
   const fetchChats = async () => {
     setRefreshing(true);
     try {
-        const chats = await uazapiClient.chats.listChats();
+        const response = await uazapiClient.chats.listChats();
+        const chats = Array.isArray(response) ? response : (response?.data || []);
         
         // Auto-sync if list is empty
-        if (!chats || (Array.isArray(chats) && chats.length === 0)) {
+        if (!chats || chats.length === 0) {
             try {
                 await uazapiClient.chats.syncChats();
                 // Fetch again after sync
-                const syncedChats = await uazapiClient.chats.listChats();
-                if (syncedChats && Array.isArray(syncedChats)) {
+                const syncedResponse = await uazapiClient.chats.listChats();
+                const syncedChats = Array.isArray(syncedResponse) ? syncedResponse : (syncedResponse?.data || []);
+                
+                if (syncedChats && syncedChats.length > 0) {
                     updateConversations(syncedChats);
                     setIsUsingMock(false);
                     return;
@@ -66,12 +69,12 @@ export default function InboxPage() {
             }
         }
 
-        if (chats && Array.isArray(chats)) {
+        if (chats && chats.length > 0) {
             updateConversations(chats);
             setIsUsingMock(false);
         } else {
-            // If strictly undefined or null (and not empty array which is valid), throw to trigger catch
-             if (!chats) throw new Error("No data returned");
+             // If strictly empty and no sync worked
+             // throw new Error("No data returned"); // Don't throw, just show empty
         }
     } catch (error: any) {
         console.error('Failed to fetch Uazapi chats', error);
@@ -125,13 +128,15 @@ export default function InboxPage() {
         try {
              // Check if it's a mock ID (number) or real ID (string)
              if (typeof activeChat === 'string') {
-                 const msgs = await uazapiClient.chats.getMessages(activeChat);
+                 const response = await uazapiClient.chats.getMessages(activeChat);
+                 const msgs = Array.isArray(response) ? response : (response?.data || []);
+
                  if (msgs && Array.isArray(msgs)) {
                      setMessages(msgs.map((m: any) => ({
                          id: m.id,
                          sender: m.fromMe ? 'me' : 'other',
                          text: m.content || '',
-                         time: m.timestamp ? new Date(m.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''
+                         time: m.timestamp ? new Date(m.timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''
                      })));
                  }
              } else {
