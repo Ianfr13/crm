@@ -149,23 +149,30 @@ export default function InboxPage() {
              // Check if it's a mock ID (number) or real ID (string)
              if (typeof activeChat === 'string') {
                  const response = await uazapiClient.chats.getMessages(activeChat);
-                 // Handle various response structures
+                 
+                 // Robust data extraction for messages
                  let msgsData: any[] = [];
                  if (response?.data?.messages && Array.isArray(response.data.messages)) {
                      msgsData = response.data.messages;
+                 } else if (response?.messages && Array.isArray(response.messages)) {
+                     msgsData = response.messages;
                  } else if (response?.data && Array.isArray(response.data)) {
                      msgsData = response.data;
                  } else if (Array.isArray(response)) {
                      msgsData = response;
                  }
 
+                 console.log("Messages fetched:", msgsData); // Debug
+
                  if (msgsData.length > 0) {
                      setMessages(msgsData.map((m: any) => ({
-                         id: m.id,
-                         sender: m.fromMe ? 'me' : 'other',
-                         text: m.content || m.body || m.message || '',
-                         time: m.timestamp ? new Date(Number(m.timestamp) * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''
+                         id: m.id || m.key?.id,
+                         sender: (m.fromMe || m.key?.fromMe) ? 'me' : 'other',
+                         text: m.content || m.body || m.message?.conversation || m.message?.extendedTextMessage?.text || m.message?.imageMessage?.caption || 'Mídia/Outro',
+                         time: (m.messageTimestamp || m.timestamp) ? new Date(Number(m.messageTimestamp || m.timestamp) * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''
                      })));
+                 } else {
+                    setMessages([]); // Clear messages if empty
                  }
              } else {
                  // Fallback for mock data
@@ -188,16 +195,15 @@ export default function InboxPage() {
       if (!activeChat || typeof activeChat !== 'string') return;
       
       try {
-          // Assuming activeChat is the chat ID, but sendText needs a number.
-          // In UazAPI, usually chat ID is the number (e.g. 5511999999999@c.us)
-          // We need to extract the number or use the chat ID if sendText supports it.
-          const number = activeChat.includes('@') ? activeChat.split('@')[0] : activeChat;
+          // UazAPI sendText expects number only for individual, or Group ID for groups.
+          // Usually passing the full ID (remoteJid) works best.
+          const number = activeChat; 
           
           await uazapiClient.messages.sendText(number, text);
           
           // Optimistic update
           setMessages(prev => [...prev, {
-              id: Date.now(),
+              id: Date.now().toString(),
               sender: 'me',
               text: text,
               time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
