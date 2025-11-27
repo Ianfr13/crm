@@ -1,70 +1,147 @@
-'use client'
+'use client';
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { DashboardStats } from '@/components/dashboard/dashboard-stats'
-import { RecentConversations } from '@/components/dashboard/recent-conversations'
-import { TopContacts } from '@/components/dashboard/top-contacts'
-import { Loader2 } from 'lucide-react'
+import React from 'react';
+import { 
+  Users, 
+  MessageSquare, 
+  TrendingUp, 
+  Clock, 
+  ArrowUpRight 
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { CRMButton } from '@/components/ui/crm-button';
+import { CRMAvatar } from '@/components/ui/crm-avatar';
+import { useCRMTheme } from '@/providers/crm-theme-provider';
+import { CRMAuthenticatedLayout } from '@/components/layout/crm-authenticated-layout';
+import { apiClient } from '@/lib/api/client';
+import { uazapiClient } from '@/lib/api/uazapi-client';
 
 export default function DashboardPage() {
-  const router = useRouter()
-  const supabase = createClient()
-  const [loading, setLoading] = useState(true)
+  const { themeColor, isDark } = useCRMTheme();
+  const [stats, setStats] = React.useState([
+    { label: 'Contatos', value: '0', change: '0%', trend: 'neutral', color: 'text-indigo-500', bg: 'bg-indigo-500/10', icon: Users },
+    { label: 'Ativos', value: '0', change: '0%', trend: 'neutral', color: 'text-emerald-500', bg: 'bg-emerald-500/10', icon: MessageSquare },
+    { label: 'Pipeline', value: 'R$ 0', change: '0%', trend: 'neutral', color: 'text-violet-500', bg: 'bg-violet-500/10', icon: TrendingUp },
+    { label: 'Tempo', value: '0m', change: '0m', trend: 'neutral', color: 'text-amber-500', bg: 'bg-amber-500/10', icon: Clock },
+  ]);
+  const [activity, setActivity] = React.useState<number[]>([]);
+  const [topContacts, setTopContacts] = React.useState<any[]>([]);
 
-  useEffect(() => {
-    checkAuth()
-  }, [])
+  React.useEffect(() => {
+    const loadData = async () => {
+        try {
+            // 1. Fetch Contacts Count
+            const contacts = await apiClient.getContacts();
+            const contactsCount = Array.isArray(contacts) ? contacts.length : 0;
 
-  const checkAuth = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
-      router.push('/login')
-    } else {
-      setLoading(false)
-    }
-  }
+            // 2. Fetch Active Chats Count (from UazAPI)
+            let activeChatsCount = 0;
+            try {
+                const chats = await uazapiClient.chats.listChats();
+                if (Array.isArray(chats)) {
+                    activeChatsCount = chats.length;
+                } else if (chats?.data?.chats && Array.isArray(chats.data.chats)) {
+                    activeChatsCount = chats.data.chats.length;
+                }
+            } catch (e) {
+                console.log('UazAPI offline or empty', e);
+            }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-      </div>
-    )
-  }
+            setStats([
+                { label: 'Contatos', value: String(contactsCount), change: '0%', trend: 'neutral', color: 'text-indigo-500', bg: 'bg-indigo-500/10', icon: Users },
+                { label: 'Ativos', value: String(activeChatsCount), change: '0%', trend: 'neutral', color: 'text-emerald-500', bg: 'bg-emerald-500/10', icon: MessageSquare },
+                { label: 'Pipeline', value: 'R$ 0', change: '0%', trend: 'neutral', color: 'text-violet-500', bg: 'bg-violet-500/10', icon: TrendingUp },
+                { label: 'Tempo', value: '0m', change: '0m', trend: 'neutral', color: 'text-amber-500', bg: 'bg-amber-500/10', icon: Clock },
+            ]);
+
+            // Clear fake activity and top contacts
+            setActivity([]);
+            setTopContacts([]);
+
+        } catch (error) {
+            console.error('Failed to load dashboard data', error);
+        }
+    };
+
+    loadData();
+  }, []);
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-            Dashboard
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-2">
-            Bem-vindo ao seu CRM. Aqui está um resumo do seu negócio.
-          </p>
+    <CRMAuthenticatedLayout title="Dashboard">
+    <div className="space-y-4 animate-in fade-in duration-300">
+      <div className="flex items-end justify-between border-b pb-2 border-zinc-800/50">
+        <div>
+          <h1 className={cn("text-xl font-bold tracking-tight", isDark ? "text-white" : "text-zinc-900")}>Dashboard</h1>
+          <p className="text-xs text-zinc-500">Visão geral da operação.</p>
         </div>
-
-        {/* Stats */}
-        <div className="mb-8">
-          <DashboardStats />
+        <div className="flex gap-2">
+            <CRMButton size="sm" variant="secondary" isDark={isDark}>Filtrar</CRMButton>
+            <CRMButton size="sm" themeColor={themeColor} isDark={isDark}>Exportar</CRMButton>
         </div>
+      </div>
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Recent Conversations */}
-          <div className="lg:col-span-2">
-            <RecentConversations />
+      <div className="grid grid-cols-4 gap-3">
+        {stats.map((stat, i) => (
+          <div key={i} className={cn(
+            "rounded-xl border p-3 backdrop-blur-sm transition-all hover:-translate-y-0.5",
+            isDark ? "bg-zinc-900/40 border-zinc-800" : "bg-white border-zinc-200 shadow-sm"
+          )}>
+            <div className="flex justify-between items-center mb-2">
+              <div className={cn("p-1.5 rounded-lg", stat.bg, stat.color)}>
+                <stat.icon className="h-4 w-4" />
+              </div>
+              <div className={cn("flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-medium", stat.trend === 'up' ? "text-emerald-500 bg-emerald-500/10" : "text-rose-500 bg-rose-500/10")}>
+                {stat.change}
+                <ArrowUpRight className={cn("h-2.5 w-2.5", stat.trend === 'up' ? "" : "rotate-90")} />
+              </div>
+            </div>
+            
+            <div>
+              <p className={cn("text-xl font-bold leading-tight", isDark ? "text-white" : "text-zinc-900")}>{stat.value}</p>
+              <h3 className="text-[10px] font-medium text-zinc-500">{stat.label}</h3>
+            </div>
           </div>
+        ))}
+      </div>
 
-          {/* Top Contacts */}
-          <div>
-            <TopContacts />
+      <div className="grid grid-cols-3 gap-3">
+        <div className={cn(
+          "col-span-2 rounded-xl border p-4 backdrop-blur-sm min-h-[250px]",
+          isDark ? "bg-zinc-900/40 border-zinc-800" : "bg-white border-zinc-200 shadow-sm"
+        )}>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className={cn("text-sm font-semibold", isDark ? "text-white" : "text-zinc-900")}>Atividade</h3>
+          </div>
+          <div className="flex items-end justify-between h-32 gap-1">
+             {activity.map((h, i) => (
+               <div key={i} className={`flex-1 bg-${themeColor}-500/20 hover:bg-${themeColor}-500/40 rounded-t-sm transition-all relative group`} style={{ height: `${h}%` }} />
+             ))}
+          </div>
+        </div>
+
+        <div className={cn(
+          "rounded-xl border p-4 backdrop-blur-sm",
+          isDark ? "bg-zinc-900/40 border-zinc-800" : "bg-white border-zinc-200 shadow-sm"
+        )}>
+          <h3 className={cn("text-sm font-semibold mb-3", isDark ? "text-white" : "text-zinc-900")}>Top Contatos</h3>
+          <div className="space-y-2">
+            {topContacts.length > 0 ? topContacts.map((contact, i) => (
+              <div key={contact.id || i} className={cn("flex items-center gap-2 p-1.5 rounded-lg transition-colors cursor-pointer group", isDark ? "hover:bg-zinc-800/50" : "hover:bg-zinc-50")}>
+                <CRMAvatar initials={contact.initials || "U"} size="sm" color={isDark ? "bg-zinc-800 text-zinc-400" : "bg-zinc-100 text-zinc-600"} />
+                <div className="flex-1 min-w-0">
+                  <p className={cn("text-xs font-medium truncate", isDark ? "text-white" : "text-zinc-900")}>{contact.name}</p>
+                  <p className="text-[10px] text-zinc-500">{contact.time}</p>
+                </div>
+              </div>
+            )) : (
+                <div className="text-center py-8 text-zinc-500 text-xs">
+                    Nenhuma atividade recente.
+                </div>
+            )}
           </div>
         </div>
       </div>
     </div>
-  )
+    </CRMAuthenticatedLayout>
+  );
 }

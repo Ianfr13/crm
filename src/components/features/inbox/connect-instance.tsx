@@ -1,12 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
 import { uazapiClient } from '@/lib/api/uazapi-client'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Loader2, RefreshCw, Smartphone } from 'lucide-react'
 
 export function ConnectInstance({ onConnected }: { onConnected: () => void }) {
+    const supabase = createClient()
     const [status, setStatus] = useState<string>('checking')
     const [qrCode, setQrCode] = useState<string | null>(null)
     const [loading, setLoading] = useState(false)
@@ -62,6 +64,17 @@ export function ConnectInstance({ onConnected }: { onConnected: () => void }) {
         try {
             setLoading(true)
             const res = await uazapiClient.instance.connectInstance('')
+            
+            // Save instance credentials to user metadata if returned
+            if (res?.instance_token) {
+                await supabase.auth.updateUser({
+                    data: { 
+                        uazapi_token: res.instance_token,
+                        uazapi_instance_id: res.instance_id
+                    }
+                });
+            }
+
             if (res.success && res.data.qrcode) {
                 setQrCode(res.data.qrcode)
             }

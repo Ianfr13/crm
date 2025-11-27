@@ -1,193 +1,129 @@
-'use client'
+'use client';
+import { useState, useEffect } from 'react';
+import { 
+  UserPlus, 
+  Search, 
+  Filter,
+  ChevronRight
+} from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { CRMButton } from '@/components/ui/crm-button';
+import { CRMAvatar } from '@/components/ui/crm-avatar';
+import { CRMBadge } from '@/components/ui/crm-badge';
+import { useCRMTheme } from '@/providers/crm-theme-provider';
+import { CRMAuthenticatedLayout } from '@/components/layout/crm-authenticated-layout';
+import { ContactDetailDrawer } from '@/components/drawers/contact-detail-drawer';
+import { apiClient } from '@/lib/api/client';
 
-import { useEffect, useState, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import { createClient } from '@/lib/supabase/client'
-import { uazapiClient } from '@/lib/api/uazapi-client'
-import { ContactList } from '@/components/features/contacts/contact-list'
-import { ContactDetail } from '@/components/features/contacts/contact-detail'
-import { ContactForm } from '@/components/features/contacts/contact-form'
-import { Loader2, Plus, X } from 'lucide-react'
-
-function ContactsContent() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const supabase = createClient()
-
-  const [contacts, setContacts] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  const [showForm, setShowForm] = useState(false)
-  const [selectedContactId, setSelectedContactId] = useState<string | null>(
-    searchParams.get('contact_id')
-  )
-  const [editingContact, setEditingContact] = useState<any>(null)
-
-  useEffect(() => {
-    checkAuth()
-  }, [])
-
-  useEffect(() => {
-    loadContacts()
-  }, [])
-
-  const checkAuth = async () => {
-    const { data: { session } } = await supabase.auth.getSession()
-    if (!session) {
-      router.push('/login')
-    }
-  }
-
-  const loadContacts = async () => {
-    try {
-      setLoading(true)
-      const data = await uazapiClient.contacts.listContacts()
-      setContacts(data?.data || [])
-    } catch (error) {
-      console.error('Erro ao carregar contatos:', error)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  const handleAddContact = async (formData: any) => {
-    try {
-      const result = await uazapiClient.contacts.createContact(formData.name, formData.phone || formData.email)
-      const newContact = result?.data || formData
-      setContacts([newContact, ...contacts])
-      setShowForm(false)
-      setSelectedContactId(newContact.id)
-    } catch (error) {
-      console.error('Erro ao criar contato:', error)
-      alert('Erro ao criar contato')
-    }
-  }
-
-  const handleUpdateContact = async (id: string, updates: any) => {
-    try {
-      const contact = contacts.find(c => c.id === id)
-      if (contact) {
-        const result = await uazapiClient.contacts.updateContact(contact.phone || contact.number, updates.name)
-        const updated = result?.data || { ...contact, ...updates }
-        setContacts(contacts.map(c => c.id === id ? updated : c))
-      }
-      setEditingContact(null)
-    } catch (error) {
-      console.error('Erro ao atualizar contato:', error)
-      alert('Erro ao atualizar contato')
-    }
-  }
-
-  const handleDeleteContact = async (id: string) => {
-    if (!confirm('Tem certeza que deseja deletar este contato?')) return
-
-    try {
-      const contact = contacts.find(c => c.id === id)
-      if (contact) {
-        await uazapiClient.contacts.deleteContact(contact.phone || contact.number)
-      }
-      setContacts(contacts.filter(c => c.id !== id))
-      if (selectedContactId === id) {
-        setSelectedContactId(null)
-      }
-    } catch (error) {
-      console.error('Erro ao deletar contato:', error)
-      alert('Erro ao deletar contato')
-    }
-  }
-
-  const selectedContact = contacts.find(c => c.id === selectedContactId)
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
-      </div>
-    )
-  }
-
-  return (
-    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-8">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-              Contatos
-            </h1>
-            <p className="text-gray-600 dark:text-gray-400 mt-2">
-              Gerencie todos os seus contatos e leads
-            </p>
-          </div>
-          <button
-            onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors"
-          >
-            <Plus className="h-5 w-5" />
-            Novo Contato
-          </button>
-        </div>
-
-        {/* Form Modal */}
-        {showForm && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg max-w-md w-full">
-              <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-                <h2 className="text-xl font-semibold text-gray-900 dark:text-white">
-                  Novo Contato
-                </h2>
-                <button
-                  onClick={() => setShowForm(false)}
-                  className="text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-                >
-                  <X className="h-5 w-5" />
-                </button>
-              </div>
-              <ContactForm
-                onSubmit={handleAddContact}
-                onCancel={() => setShowForm(false)}
-              />
-            </div>
-          </div>
-        )}
-
-        {/* Main Content */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* List */}
-          <div className="lg:col-span-1">
-            <ContactList
-              contacts={contacts}
-              selectedId={selectedContactId}
-              onSelect={setSelectedContactId}
-              onDelete={handleDeleteContact}
-            />
-          </div>
-
-          {/* Detail */}
-          <div className="lg:col-span-2">
-            {selectedContact ? (
-              <ContactDetail
-                contact={selectedContact}
-                onUpdate={handleUpdateContact}
-                onDelete={handleDeleteContact}
-              />
-            ) : (
-              <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md p-12 text-center">
-                <p className="text-gray-500 dark:text-gray-400">
-                  Selecione um contato para visualizar detalhes
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-}
+import { Contact } from '@/types';
 
 export default function ContactsPage() {
-  return (
-    <Suspense fallback={<div className="flex items-center justify-center min-h-screen"><Loader2 className="h-8 w-8 animate-spin text-blue-600" /></div>}>
-      <ContactsContent />
-    </Suspense>
-  )
-}
+    const { themeColor, isDark } = useCRMTheme();
+    const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+    const [contacts, setContacts] = useState<Contact[]>([]);
+
+    useEffect(() => {
+        const loadContacts = async () => {
+            try {
+                const data = await apiClient.getContacts();
+                if (Array.isArray(data)) {
+                    setContacts(data);
+                } else {
+                    setContacts([]);
+                }
+            } catch (error) {
+                console.error('Failed to fetch contacts', error);
+                setContacts([]);
+            }
+        };
+        loadContacts();
+    }, []);
+
+    return (
+        <CRMAuthenticatedLayout title="Contatos">
+        <div className="space-y-3 h-full flex flex-col animate-in fade-in duration-300">
+             <div className="flex items-center justify-between border-b pb-2 border-zinc-800/50 shrink-0">
+                <div>
+                    <h1 className={cn("text-xl font-bold", isDark ? "text-white" : "text-zinc-900")}>Contatos</h1>
+                </div>
+                <CRMButton size="sm" themeColor={themeColor} isDark={isDark}>
+                    <UserPlus className="h-3 w-3 mr-1.5" /> Novo Contato
+                </CRMButton>
+            </div>
+
+            <div className={cn("p-2 rounded-lg border flex gap-2 items-center shrink-0", isDark ? "bg-zinc-900/40 border-zinc-800" : "bg-white border-zinc-200")}>
+                <Search className="h-3.5 w-3.5 text-zinc-500 ml-1" />
+                <input 
+                    type="text" 
+                    placeholder="Buscar contatos..." 
+                    className={cn("w-full bg-transparent text-xs focus:outline-none", isDark ? "text-zinc-200 placeholder:text-zinc-600" : "text-zinc-900 placeholder:text-zinc-400")}
+                />
+                <CRMButton size="sm" variant="ghost" isDark={isDark}><Filter className="h-3.5 w-3.5" /></CRMButton>
+            </div>
+
+            <div className={cn("flex-1 rounded-lg border overflow-hidden", isDark ? "bg-zinc-900/20 border-zinc-800" : "bg-white border-zinc-200")}>
+                <div className="overflow-auto h-full">
+                    <table className="w-full text-xs text-left">
+                        <thead className={cn("uppercase font-medium sticky top-0", isDark ? "bg-zinc-800/80 text-zinc-400 backdrop-blur-md" : "bg-zinc-50 text-zinc-500")}>
+                            <tr>
+                                <th className="px-4 py-2">Nome</th>
+                                <th className="px-4 py-2">Contato</th>
+                                <th className="px-4 py-2">Tags</th>
+                                <th className="px-4 py-2">Status</th>
+                                <th className="px-4 py-2 text-right"></th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-zinc-800/30">
+                            {contacts.map((contact) => (
+                                <tr 
+                                    key={contact.id} 
+                                    onClick={() => setSelectedContact(contact)}
+                                    className={cn("group cursor-pointer transition-colors", isDark ? "hover:bg-zinc-800/40" : "hover:bg-zinc-50")}
+                                >
+                                    <td className="px-4 py-2.5">
+                                        <div className="flex items-center gap-2">
+                                            <CRMAvatar initials={contact.name.slice(0,2).toUpperCase()} size="sm" themeColor={themeColor} />
+                                            <div>
+                                                <p className={cn("font-medium", isDark ? "text-white" : "text-zinc-900")}>{contact.name}</p>
+                                                <p className="text-[10px] text-zinc-500">{contact.role}</p>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-2.5 text-zinc-500">
+                                        <div className="flex flex-col gap-0.5">
+                                            <span>{contact.email}</span>
+                                            <span className="text-[9px] opacity-70">{contact.phone}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-2.5">
+                                        <div className="flex gap-1">
+                                            {contact.tags?.map(tag => (
+                                                <CRMBadge key={tag} themeColor={themeColor} isDark={isDark}>{tag}</CRMBadge>
+                                            ))}
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-2.5">
+                                        <div className="flex items-center gap-1.5">
+                                            <div className={cn("h-1.5 w-1.5 rounded-full", contact.status === 'active' ? "bg-emerald-500" : contact.status === 'pending' ? "bg-amber-500" : "bg-zinc-500")} />
+                                            <span className="capitalize">{contact.status}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-2.5 text-right">
+                                        <ChevronRight className="h-3.5 w-3.5 text-zinc-500 opacity-0 group-hover:opacity-100" />
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        <ContactDetailDrawer 
+            contact={selectedContact} 
+            onClose={() => setSelectedContact(null)}
+            isDark={isDark}
+            themeColor={themeColor}
+        />
+        </CRMAuthenticatedLayout>
+    );
+};

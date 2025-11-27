@@ -1,13 +1,16 @@
 export type Contact = {
-    id: string
-    created_at: string
+    id: string | number
+    created_at?: string
     name: string
     email: string | null
     phone: string | null
-    tags: string[] | null
-    pipeline_stage: string | null
-    owner_id: string | null
-    metadata: Record<string, any> | null
+    tags: string[]
+    pipeline_stage?: string | null
+    owner_id?: string | null
+    metadata?: Record<string, any> | null
+    role?: string
+    status?: string
+    value?: string
 }
 
 export type Conversation = {

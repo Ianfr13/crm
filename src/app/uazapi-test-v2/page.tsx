@@ -149,6 +149,43 @@ export default function UazapiTestPage() {
                         </Button>
                     </CardContent>
                 </Card>
+
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Debug Data</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="flex gap-2 flex-wrap">
+                            <Button onClick={async () => {
+                                try {
+                                    addLog('Fetching Chats...');
+                                    const res = await uazapiClient.chats.listChats();
+                                    addLog(`Chats: ${JSON.stringify(res, null, 2)}`);
+                                } catch (e: any) { addLog(`Error Chats: ${e.message}`); }
+                            }} variant="secondary">
+                                List Chats
+                            </Button>
+                            <Button onClick={async () => {
+                                try {
+                                    addLog('Syncing Chats...');
+                                    const res = await uazapiClient.chats.syncChats();
+                                    addLog(`Sync: ${JSON.stringify(res, null, 2)}`);
+                                } catch (e: any) { addLog(`Error Sync: ${e.message}`); }
+                            }} variant="secondary">
+                                Sync Chats
+                            </Button>
+                            <Button onClick={async () => {
+                                try {
+                                    addLog('Fetching Profile...');
+                                    const res = await uazapiClient.instance.getInstanceStatus();
+                                    addLog(`Status Full: ${JSON.stringify(res, null, 2)}`);
+                                } catch (e: any) { addLog(`Error Profile: ${e.message}`); }
+                            }} variant="secondary">
+                                Get Status Raw
+                            </Button>
+                        </div>
+                    </CardContent>
+                </Card>
             </div>
 
             <Card>

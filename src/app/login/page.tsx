@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { Loader2, Mail, Lock } from 'lucide-react'
+import { Mail, Lock } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import Link from 'next/link'
+import { CRMButton } from '@/components/ui/crm-button'
+import { useCRMTheme } from '@/providers/crm-theme-provider'
 
 export default function LoginPage() {
     const [email, setEmail] = useState('')
@@ -14,9 +15,10 @@ export default function LoginPage() {
     const [error, setError] = useState<string | null>(null)
     const router = useRouter()
     const supabase = createClient()
+    const { isDark, themeColor } = useCRMTheme()
 
-    const handleLogin = async (e: React.FormEvent) => {
-        e.preventDefault()
+    const handleLogin = async (e?: React.FormEvent) => {
+        if(e) e.preventDefault()
         setLoading(true)
         setError(null)
 
@@ -29,76 +31,87 @@ export default function LoginPage() {
             setError(error.message)
             setLoading(false)
         } else {
-            router.push('/')
+            router.push('/dashboard')
             router.refresh()
         }
     }
 
     return (
-        <div className="flex min-h-screen items-center justify-center bg-gray-50 dark:bg-gray-900 px-4">
-            <div className="w-full max-w-md space-y-8 bg-white dark:bg-gray-800 p-8 rounded-xl shadow-lg">
-                <div className="text-center">
-                    <h2 className="mt-6 text-3xl font-bold tracking-tight text-gray-900 dark:text-white">
-                        Sign in to your account
-                    </h2>
-                </div>
-
-                <form className="mt-8 space-y-6" onSubmit={handleLogin}>
-                    <div className="space-y-4 rounded-md shadow-sm">
-                        <div className="relative">
-                            <Mail className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
-                            <input
-                                id="email-address"
-                                name="email"
-                                type="email"
-                                autoComplete="email"
-                                required
-                                className="block w-full rounded-md border-0 py-2 pl-10 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600"
-                                placeholder="Email address"
-                                value={email}
-                                onChange={(e) => setEmail(e.target.value)}
-                            />
-                        </div>
-                        <div className="relative">
-                            <Lock className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
-                            <input
-                                id="password"
-                                name="password"
-                                type="password"
-                                autoComplete="current-password"
-                                required
-                                className="block w-full rounded-md border-0 py-2 pl-10 text-gray-900 ring-1 ring-inset ring-gray-300 placeholder:text-gray-400 focus:ring-2 focus:ring-inset focus:ring-primary sm:text-sm sm:leading-6 dark:bg-gray-700 dark:text-white dark:ring-gray-600"
-                                placeholder="Password"
-                                value={password}
-                                onChange={(e) => setPassword(e.target.value)}
-                            />
-                        </div>
-                    </div>
-
-                    {error && (
-                        <div className="text-red-500 text-sm text-center">{error}</div>
-                    )}
-
-                    <div className="flex flex-col gap-3">
-                        <button
-                            type="submit"
-                            disabled={loading}
-                            className={cn(
-                                "group relative flex w-full justify-center rounded-md bg-primary px-3 py-2 text-sm font-semibold text-white hover:bg-primary/90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary disabled:opacity-50 disabled:cursor-not-allowed",
-                                loading && "opacity-50 cursor-not-allowed"
-                            )}
-                        >
-                            {loading ? <Loader2 className="animate-spin h-5 w-5" /> : 'Sign in'}
-                        </button>
-                        <Link
-                            href="/signup"
-                            className="group relative flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300 hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-600 dark:bg-gray-700 dark:text-white dark:ring-gray-600 dark:hover:bg-gray-600"
-                        >
-                            Create Account
-                        </Link>
-                    </div>
-                </form>
+      <div className={cn("flex flex-col items-center justify-center h-screen w-full transition-colors duration-500", isDark ? "bg-zinc-950" : "bg-zinc-50")}>
+         
+         <div className="fixed inset-0 pointer-events-none overflow-hidden">
+            <div className={cn("absolute top-[-20%] left-[-10%] w-[50%] h-[50%] rounded-full blur-[120px] opacity-10 transition-colors duration-700", `bg-${themeColor}-600`)} />
+            <div className={cn("absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] rounded-full blur-[120px] opacity-10 transition-colors duration-700", isDark ? "bg-blue-600" : "bg-blue-400")} />
+         </div>
+  
+         <div className="w-full max-w-[350px] p-8 space-y-8 relative z-10 animate-in fade-in zoom-in-95 duration-500">
+            <div className="flex flex-col items-center justify-center gap-4">
+               <img 
+                src="https://i.postimg.cc/25tSrv5C/LOGO-19.png" 
+                alt="UazAPI Logo" 
+                className={cn("h-24 w-auto object-contain drop-shadow-2xl", !isDark && "brightness-0 opacity-80")}
+               />
             </div>
-        </div>
+            
+            <div className="space-y-4">
+              <div className="space-y-1.5">
+                 <label className={cn("text-xs font-bold ml-1 uppercase tracking-wider", isDark ? "text-zinc-500" : "text-zinc-400")}>Email</label>
+                 <div className="relative">
+                     <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+                     <input 
+                       type="email" 
+                       value={email}
+                       onChange={(e) => setEmail(e.target.value)}
+                       className={cn(
+                         "w-full pl-10 pr-3 py-3 rounded-xl border text-sm outline-none transition-all focus:ring-2 shadow-sm",
+                         isDark 
+                           ? `bg-zinc-900 border-zinc-800 text-white focus:ring-${themeColor}-500/20 focus:border-${themeColor}-500 placeholder:text-zinc-600` 
+                           : `bg-white border-zinc-200 text-zinc-900 focus:ring-${themeColor}-500/20 focus:border-${themeColor}-500 placeholder:text-zinc-400`
+                       )}
+                       placeholder="seu@email.com"
+                     />
+                 </div>
+              </div>
+              
+              <div className="space-y-1.5">
+                 <label className={cn("text-xs font-bold ml-1 uppercase tracking-wider", isDark ? "text-zinc-500" : "text-zinc-400")}>Senha</label>
+                 <div className="relative">
+                     <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
+                     <input 
+                       type="password" 
+                       value={password}
+                       onChange={(e) => setPassword(e.target.value)}
+                       className={cn(
+                         "w-full pl-10 pr-3 py-3 rounded-xl border text-sm outline-none transition-all focus:ring-2 shadow-sm",
+                         isDark 
+                           ? `bg-zinc-900 border-zinc-800 text-white focus:ring-${themeColor}-500/20 focus:border-${themeColor}-500 placeholder:text-zinc-600` 
+                           : `bg-white border-zinc-200 text-zinc-900 focus:ring-${themeColor}-500/20 focus:border-${themeColor}-500 placeholder:text-zinc-400`
+                       )}
+                       placeholder="••••••••"
+                     />
+                 </div>
+              </div>
+              
+              {error && (
+                  <div className="text-red-500 text-xs text-center">{error}</div>
+              )}
+
+              <CRMButton 
+                themeColor={themeColor} 
+                isDark={isDark} 
+                size="lg"
+                className="w-full mt-6 shadow-xl hover:shadow-2xl hover:-translate-y-0.5 transition-all"
+                onClick={handleLogin}
+                disabled={loading}
+              >
+                {loading ? 'Entrando...' : 'Entrar na Plataforma'}
+              </CRMButton>
+  
+              <p className={cn("text-center text-[10px] mt-4", isDark ? "text-zinc-600" : "text-zinc-400")}>
+                  Ao entrar, você concorda com os Termos de Uso.
+              </p>
+            </div>
+         </div>
+      </div>
     )
 }

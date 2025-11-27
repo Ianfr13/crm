@@ -11,22 +11,43 @@ async function invokeFunction(functionName: string, action: string, body?: any, 
   const { data: { session } } = await supabase.auth.getSession()
   if (!session) throw new Error('Não autenticado')
 
+  // Extract instance token from user metadata if available
+  const uazapiToken = session.user.user_metadata?.uazapi_token;
+
   // Append action to the URL query parameters
   // For GET requests, we also need to append body params as query params if they exist
   let url = `${functionName}?action=${action}`
   let requestBody = body
 
   if (method === 'GET' && body) {
-    const params = new URLSearchParams(body)
-    url += `&${params.toString()}`
+    // Filter out undefined or null values from body
+    const cleanBody = Object.entries(body).reduce((acc, [key, value]) => {
+      if (value !== undefined && value !== null) {
+        acc[key] = String(value);
+      }
+      return acc;
+    }, {} as Record<string, string>);
+
+    const params = new URLSearchParams(cleanBody)
+    const paramString = params.toString();
+    if (paramString) {
+        url += `&${paramString}`
+    }
     requestBody = undefined
+  }
+
+  const headers: any = {
+    Authorization: `Bearer ${session.access_token}`,
+  };
+
+  // If we have a stored instance token, pass it in the headers
+  if (uazapiToken) {
+      headers['token'] = uazapiToken;
   }
 
   const options: any = {
     method,
-    headers: {
-      Authorization: `Bearer ${session.access_token}`,
-    },
+    headers,
   }
 
   if (method !== 'GET' && requestBody) {
@@ -35,7 +56,13 @@ async function invokeFunction(functionName: string, action: string, body?: any, 
 
   const response = await supabase.functions.invoke(url, options)
 
-  if (response.error) throw response.error
+  if (response.error) {
+      const message = response.error.message || response.error.toString();
+      // Create a clearer error object
+      const err: any = new Error(message);
+      err.originalError = response.error;
+      throw err;
+  }
   return response.data
 }
 
@@ -333,10 +360,18 @@ export const uazapiClient = {
     async createGroup(name: string, members: string[]) {
       return invokeFunction('uazapi-groups', 'create_group', { subject: name, participants: members })
     },
-    async updateGroup(groupId: string, name: string) {
-      return invokeFunction('uazapi-groups', 'update_group', {
+    async updateGroup(groupId: string, updates: { name?: string, description?: string }) {
+      const payload: any = { group_id: groupId, ...updates };
+      // Map 'name' to 'subject' as typically required by WhatsApp APIs
+      if (updates.name) {
+          payload.subject = updates.name;
+      }
+      return invokeFunction('uazapi-groups', 'update_group', payload)
+    },
+    async updateGroupPicture(groupId: string, imageUrl: string) {
+      return invokeFunction('uazapi-groups', 'update_group_picture', {
         group_id: groupId,
-        name,
+        image_url: imageUrl
       })
     },
     async deleteGroup(groupId: string) {

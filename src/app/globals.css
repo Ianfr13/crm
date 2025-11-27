@@ -20,8 +20,7 @@
   --radius: 0.5rem;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
+.dark {
     --background: #0B1220;
     --foreground: #E5E7EB;
     --primary: #3B82F6;
@@ -38,7 +37,6 @@
     --input: #374151;
     --ring: #3B82F6;
   }
-}
 
 @theme inline {
   --color-background: var(--background);
