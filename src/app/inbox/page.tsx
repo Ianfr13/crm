@@ -49,17 +49,33 @@ export default function InboxPage() {
     setRefreshing(true);
     try {
         const response = await uazapiClient.chats.listChats();
-        const chats = Array.isArray(response) ? response : (response?.data || []);
+        // Extract chats array from various possible structures
+        let chats: any[] = [];
+        if (response?.data?.chats && Array.isArray(response.data.chats)) {
+            chats = response.data.chats;
+        } else if (response?.data && Array.isArray(response.data)) {
+            chats = response.data;
+        } else if (Array.isArray(response)) {
+            chats = response;
+        }
         
         // Auto-sync if list is empty
-        if (!chats || chats.length === 0) {
+        if (chats.length === 0) {
             try {
                 await uazapiClient.chats.syncChats();
                 // Fetch again after sync
                 const syncedResponse = await uazapiClient.chats.listChats();
-                const syncedChats = Array.isArray(syncedResponse) ? syncedResponse : (syncedResponse?.data || []);
                 
-                if (syncedChats && syncedChats.length > 0) {
+                let syncedChats: any[] = [];
+                if (syncedResponse?.data?.chats && Array.isArray(syncedResponse.data.chats)) {
+                    syncedChats = syncedResponse.data.chats;
+                } else if (syncedResponse?.data && Array.isArray(syncedResponse.data)) {
+                    syncedChats = syncedResponse.data;
+                } else if (Array.isArray(syncedResponse)) {
+                    syncedChats = syncedResponse;
+                }
+                
+                if (syncedChats.length > 0) {
                     updateConversations(syncedChats);
                     setIsUsingMock(false);
                     return;
@@ -69,12 +85,12 @@ export default function InboxPage() {
             }
         }
 
-        if (chats && chats.length > 0) {
+        if (chats.length > 0) {
             updateConversations(chats);
             setIsUsingMock(false);
         } else {
              // If strictly empty and no sync worked
-             // throw new Error("No data returned"); // Don't throw, just show empty
+             // Don't throw, just show empty
         }
     } catch (error: any) {
         console.error('Failed to fetch Uazapi chats', error);
@@ -100,15 +116,18 @@ export default function InboxPage() {
   };
 
   const updateConversations = (chats: any[]) => {
-        const mappedChats = chats.map((chat: any) => ({
-            id: chat.id,
-            name: chat.name || chat.number || chat.id.split('@')[0] || 'Desconhecido',
-            lastMsg: chat.last_message?.content || '...',
-            time: chat.last_message?.timestamp ? new Date(chat.last_message.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '',
-            unread: chat.unread_count || 0,
-            online: true, // Mock for now
-            channel: 'whatsapp' // Uazapi defaults to WhatsApp
-        }));
+        const mappedChats = chats.map((chat: any) => {
+            const timestamp = chat.wa_lastMsgTimestamp || chat.last_message?.timestamp;
+            return {
+                id: chat.id,
+                name: chat.name || chat.wa_name || chat.wa_contactName || chat.number || chat.id.split('@')[0] || 'Desconhecido',
+                lastMsg: chat.wa_lastMessageTextVote || chat.last_message?.content || '...',
+                time: timestamp ? new Date(Number(timestamp)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '',
+                unread: chat.wa_unreadCount || chat.unread_count || 0,
+                online: true, // Mock for now
+                channel: 'whatsapp' // Uazapi defaults to WhatsApp
+            };
+        });
         setConversations(mappedChats);
   };
 
@@ -129,14 +148,22 @@ export default function InboxPage() {
              // Check if it's a mock ID (number) or real ID (string)
              if (typeof activeChat === 'string') {
                  const response = await uazapiClient.chats.getMessages(activeChat);
-                 const msgs = Array.isArray(response) ? response : (response?.data || []);
+                 // Handle various response structures
+                 let msgsData: any[] = [];
+                 if (response?.data?.messages && Array.isArray(response.data.messages)) {
+                     msgsData = response.data.messages;
+                 } else if (response?.data && Array.isArray(response.data)) {
+                     msgsData = response.data;
+                 } else if (Array.isArray(response)) {
+                     msgsData = response;
+                 }
 
-                 if (msgs && Array.isArray(msgs)) {
-                     setMessages(msgs.map((m: any) => ({
+                 if (msgsData.length > 0) {
+                     setMessages(msgsData.map((m: any) => ({
                          id: m.id,
                          sender: m.fromMe ? 'me' : 'other',
-                         text: m.content || '',
-                         time: m.timestamp ? new Date(m.timestamp * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''
+                         text: m.content || m.body || m.message || '',
+                         time: m.timestamp ? new Date(Number(m.timestamp) * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''
                      })));
                  }
              } else {
