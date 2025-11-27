@@ -12,6 +12,7 @@ import { CRMAvatar } from '@/components/ui/crm-avatar';
 import { CRMBadge } from '@/components/ui/crm-badge';
 import { useCRMTheme } from '@/providers/crm-theme-provider';
 import { CRMAuthenticatedLayout } from '@/components/layout/crm-authenticated-layout';
+import { ContactDetailDrawer } from '@/components/drawers/contact-detail-drawer';
 import { apiClient } from '@/lib/api/client';
 
 import { Contact } from '@/types';
