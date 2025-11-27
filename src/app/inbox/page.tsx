@@ -119,7 +119,7 @@ export default function InboxPage() {
         const mappedChats = chats.map((chat: any) => {
             const timestamp = chat.wa_lastMsgTimestamp || chat.last_message?.timestamp;
             return {
-                id: chat.id,
+                id: chat.wa_chatid || chat.id,
                 name: chat.name || chat.wa_name || chat.wa_contactName || chat.number || chat.id.split('@')[0] || 'Desconhecido',
                 lastMsg: chat.wa_lastMessageTextVote || chat.last_message?.content || '...',
                 time: timestamp ? new Date(Number(timestamp)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '',
@@ -168,8 +168,8 @@ export default function InboxPage() {
                      setMessages(msgsData.map((m: any) => ({
                          id: m.id || m.key?.id,
                          sender: (m.fromMe || m.key?.fromMe) ? 'me' : 'other',
-                         text: m.content || m.body || m.message?.conversation || m.message?.extendedTextMessage?.text || m.message?.imageMessage?.caption || 'Mídia/Outro',
-                         time: (m.messageTimestamp || m.timestamp) ? new Date(Number(m.messageTimestamp || m.timestamp) * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''
+                         text: m.text || m.content?.text || m.content || m.body || m.message?.conversation || m.message?.extendedTextMessage?.text || m.message?.imageMessage?.caption || 'Mídia/Outro',
+                         time: (m.messageTimestamp || m.timestamp) ? new Date(Number(m.messageTimestamp || m.timestamp)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''
                      })));
                  } else {
                     setMessages([]); // Clear messages if empty
