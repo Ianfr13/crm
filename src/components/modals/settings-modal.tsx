@@ -210,7 +210,8 @@ export const SettingsModal = ({ isOpen, onClose, isDark, themeColor, setThemeCol
       const { data: { user } } = await supabase.auth.getUser();
       const role = user?.user_metadata?.role || 'User';
       
-      if (role !== 'Admin') {
+      // Check for admin role (case-insensitive)
+      if (String(role).toLowerCase() !== 'admin') {
           alert('Apenas administradores podem convidar membros.');
           return;
       }

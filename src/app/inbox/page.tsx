@@ -840,7 +840,7 @@ export default function InboxPage() {
                                     const url = prompt("Cole a URL da nova imagem do grupo:");
                                     if (url) {
                                         try {
-                                            await uazapiClient.groups.updateGroupPicture(activeChat, url);
+                                            await uazapiClient.groups.updateGroupPicture(String(activeChat), url);
                                             alert("Foto atualizada com sucesso!");
                                         } catch (e) {
                                             console.error(e);
