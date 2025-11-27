@@ -419,56 +419,64 @@ export default function InboxPage() {
         )}
       </div>
 
-      {/* Coluna 3: Info do Lead e Orientações (RESTAURADA) */}\n
+      {/* Coluna 3: Info do Lead e Orientações (RESTAURADA) */}
       <div className={cn("w-72 border-l flex flex-col hidden xl:flex", isDark ? "border-zinc-800 bg-zinc-900/50" : "border-zinc-200 bg-white")}>
           <div className={cn("h-14 px-4 border-b flex items-center font-bold text-xs", isDark ? "border-zinc-800 text-zinc-400" : "border-zinc-200 text-zinc-600")}>
               Detalhes do Lead
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
-              {/* Lead Profile */}
-              <div className="text-center">
-                  <CRMAvatar initials="AS" size="xl" themeColor={themeColor} className="mx-auto mb-2" />
-                  <h3 className={cn("font-bold text-sm", isDark ? "text-white" : "text-zinc-900")}>Ana Souza</h3>
-                  <p className="text-zinc-500 text-xs">Gerente de Projetos</p>
-                  <div className="flex justify-center gap-2 mt-3">
-                      <CRMBadge themeColor={themeColor} isDark={isDark}>Cliente VIP</CRMBadge>
-                      <CRMBadge variant="warning" isDark={isDark}>Quente</CRMBadge>
-                  </div>
-              </div>
+              {activeChat ? (
+                  <>
+                    {/* Lead Profile */}
+                    <div className="text-center">
+                        <CRMAvatar 
+                            initials={conversations.find(c => c.id === activeChat)?.name.slice(0,2).toUpperCase() || "?"} 
+                            size="xl" 
+                            themeColor={themeColor} 
+                            className="mx-auto mb-2" 
+                        />
+                        <h3 className={cn("font-bold text-sm", isDark ? "text-white" : "text-zinc-900")}>
+                            {conversations.find(c => c.id === activeChat)?.name || "Desconhecido"}
+                        </h3>
+                        <p className="text-zinc-500 text-xs">Lead</p>
+                        <div className="flex justify-center gap-2 mt-3">
+                            <CRMBadge themeColor={themeColor} isDark={isDark}>Novo</CRMBadge>
+                        </div>
+                    </div>
 
-              {/* Contact Info */}
-              <div className={cn("p-3 rounded-lg border space-y-2", isDark ? "bg-zinc-800/30 border-zinc-800" : "bg-zinc-50 border-zinc-200")}>
-                  <div className="flex items-center gap-2 text-xs">
-                      <Mail className="h-3.5 w-3.5 text-zinc-500" />
-                      <span className={isDark ? "text-zinc-300" : "text-zinc-700"}>ana@email.com</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs">
-                      <Phone className="h-3.5 w-3.5 text-zinc-500" />
-                      <span className={isDark ? "text-zinc-300" : "text-zinc-700"}>+55 11 99999-9999</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-xs">
-                      <Globe className="h-3.5 w-3.5 text-zinc-500" />
-                      <span className={isDark ? "text-zinc-300" : "text-zinc-700"}>ana.com.br</span>
-                  </div>
-              </div>
+                    {/* Contact Info */}
+                    <div className={cn("p-3 rounded-lg border space-y-2", isDark ? "bg-zinc-800/30 border-zinc-800" : "bg-zinc-50 border-zinc-200")}>
+                        <div className="flex items-center gap-2 text-xs">
+                            <Phone className="h-3.5 w-3.5 text-zinc-500" />
+                            <span className={isDark ? "text-zinc-300" : "text-zinc-700"}>
+                                {conversations.find(c => c.id === activeChat)?.id.split('@')[0] || "-"}
+                            </span>
+                        </div>
+                    </div>
 
-              {/* Box de Orientações Editável */}
-              <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                      <h4 className="text-[10px] font-bold uppercase text-zinc-500 tracking-wider flex items-center gap-1">
-                          <FileText className="h-3 w-3" /> Orientações
-                      </h4>
-                      <CRMButton variant="ghost" size="icon" className="h-5 w-5" isDark={isDark}><Edit2 className="h-3 w-3" /></CRMButton>
+                    {/* Box de Orientações Editável */}
+                    <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                            <h4 className="text-[10px] font-bold uppercase text-zinc-500 tracking-wider flex items-center gap-1">
+                                <FileText className="h-3 w-3" /> Orientações
+                            </h4>
+                            <CRMButton variant="ghost" size="icon" className="h-5 w-5" isDark={isDark}><Edit2 className="h-3 w-3" /></CRMButton>
+                        </div>
+                        <textarea 
+                            value={orientations}
+                            onChange={(e) => setOrientations(e.target.value)}
+                            className={cn(
+                                "w-full h-32 p-3 rounded-lg text-xs resize-none border focus:outline-none focus:ring-1",
+                                isDark ? "bg-zinc-950 border-zinc-800 text-zinc-300 focus:border-zinc-600" : "bg-white border-zinc-200 text-zinc-700 focus:border-zinc-300"
+                            )}
+                        />
+                    </div>
+                  </>
+              ) : (
+                  <div className="text-center text-zinc-500 text-xs mt-10">
+                      Selecione um contato para ver detalhes.
                   </div>
-                  <textarea 
-                      value={orientations}
-                      onChange={(e) => setOrientations(e.target.value)}
-                      className={cn(
-                          "w-full h-32 p-3 rounded-lg text-xs resize-none border focus:outline-none focus:ring-1",
-                          isDark ? "bg-zinc-950 border-zinc-800 text-zinc-300 focus:border-zinc-600" : "bg-white border-zinc-200 text-zinc-700 focus:border-zinc-300"
-                      )}
-                  />
-              </div>
+              )}
           </div>
       </div>
 

@@ -17,12 +17,12 @@ import { CRMAuthenticatedLayout } from '@/components/layout/crm-authenticated-la
 export default function DashboardPage() {
   const { themeColor, isDark } = useCRMTheme();
   const [stats, setStats] = React.useState([
-    { label: 'Contatos', value: '2,543', change: '+12%', trend: 'up', color: 'text-indigo-500', bg: 'bg-indigo-500/10', icon: Users },
-    { label: 'Ativos', value: '45', change: '+5%', trend: 'up', color: 'text-emerald-500', bg: 'bg-emerald-500/10', icon: MessageSquare },
-    { label: 'Pipeline', value: 'R$ 128k', change: '+18%', trend: 'up', color: 'text-violet-500', bg: 'bg-violet-500/10', icon: TrendingUp },
-    { label: 'Tempo', value: '12m', change: '-2m', trend: 'down', color: 'text-amber-500', bg: 'bg-amber-500/10', icon: Clock },
+    { label: 'Contatos', value: '0', change: '0%', trend: 'neutral', color: 'text-indigo-500', bg: 'bg-indigo-500/10', icon: Users },
+    { label: 'Ativos', value: '0', change: '0%', trend: 'neutral', color: 'text-emerald-500', bg: 'bg-emerald-500/10', icon: MessageSquare },
+    { label: 'Pipeline', value: 'R$ 0', change: '0%', trend: 'neutral', color: 'text-violet-500', bg: 'bg-violet-500/10', icon: TrendingUp },
+    { label: 'Tempo', value: '0m', change: '0m', trend: 'neutral', color: 'text-amber-500', bg: 'bg-amber-500/10', icon: Clock },
   ]);
-  const [activity, setActivity] = React.useState([40, 65, 30, 85, 55, 90, 45, 70, 60, 95, 50, 75, 60, 80, 45, 60]);
+  const [activity, setActivity] = React.useState<number[]>([]);
   const [topContacts, setTopContacts] = React.useState<any[]>([]);
 
   React.useEffect(() => {
@@ -107,15 +107,9 @@ export default function DashboardPage() {
                 </div>
               </div>
             )) : (
-                [1, 2, 3, 4, 5].map((_, i) => (
-                  <div key={i} className={cn("flex items-center gap-2 p-1.5 rounded-lg transition-colors cursor-pointer group", isDark ? "hover:bg-zinc-800/50" : "hover:bg-zinc-50")}>
-                    <CRMAvatar initials="CM" size="sm" color={isDark ? "bg-zinc-800 text-zinc-400" : "bg-zinc-100 text-zinc-600"} />
-                    <div className="flex-1 min-w-0">
-                      <p className={cn("text-xs font-medium truncate", isDark ? "text-white" : "text-zinc-900")}>Carlos Machado</p>
-                      <p className="text-[10px] text-zinc-500">2m atrás</p>
-                    </div>
-                  </div>
-                ))
+                <div className="text-center py-8 text-zinc-500 text-xs">
+                    Nenhuma atividade recente.
+                </div>
             )}
           </div>
         </div>
