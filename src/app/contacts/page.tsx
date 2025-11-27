@@ -12,7 +12,7 @@ import { CRMAvatar } from '@/components/ui/crm-avatar';
 import { CRMBadge } from '@/components/ui/crm-badge';
 import { useCRMTheme } from '@/providers/crm-theme-provider';
 import { CRMAuthenticatedLayout } from '@/components/layout/crm-authenticated-layout';
-import { ContactDetailDrawer } from '@/components/drawers/contact-detail-drawer';
+import { apiClient } from '@/lib/api/client';
 
 import { Contact } from '@/types';
 
@@ -22,10 +22,20 @@ export default function ContactsPage() {
     const [contacts, setContacts] = useState<Contact[]>([]);
 
     useEffect(() => {
-        fetch('/api/contacts')
-            .then(res => res.json())
-            .then(data => setContacts(data))
-            .catch(err => console.error('Failed to fetch contacts', err));
+        const loadContacts = async () => {
+            try {
+                const data = await apiClient.getContacts();
+                if (Array.isArray(data)) {
+                    setContacts(data);
+                } else {
+                    setContacts([]);
+                }
+            } catch (error) {
+                console.error('Failed to fetch contacts', error);
+                setContacts([]);
+            }
+        };
+        loadContacts();
     }, []);
 
     return (

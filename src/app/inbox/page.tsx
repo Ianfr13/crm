@@ -16,7 +16,14 @@ import {
   FileText, 
   Edit2, 
   Globe,
-  RefreshCw
+  RefreshCw,
+  Check,
+  CheckCheck,
+  Trash2,
+  UserMinus,
+  UserPlus,
+  Shield,
+  ShieldAlert
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CRMButton } from '@/components/ui/crm-button';
@@ -24,6 +31,7 @@ import { CRMAvatar } from '@/components/ui/crm-avatar';
 import { CRMBadge } from '@/components/ui/crm-badge';
 import { useCRMTheme } from '@/providers/crm-theme-provider';
 import { CRMAuthenticatedLayout } from '@/components/layout/crm-authenticated-layout';
+import { CreateGroupDialog } from '@/components/features/inbox/create-group-dialog';
 import { SimpleInputModal } from '@/components/modals/simple-input-modal';
 
 import { uazapiClient } from '@/lib/api/uazapi-client';
@@ -34,6 +42,16 @@ export default function InboxPage() {
   const [visibleChannels, setVisibleChannels] = useState(['whatsapp', 'email', 'instagram', 'facebook']);
   const [orientations, setOrientations] = useState("Cliente interessado no plano Enterprise. \n\nPreferência por contato via WhatsApp à tarde.");
   
+  // Search State
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  // Group Management State
+  const [groupMembers, setGroupMembers] = useState<any[]>([]);
+  const [groupDescription, setGroupDescription] = useState('');
+  const [groupName, setGroupName] = useState('');
+  const [isGroupAdmin, setIsGroupAdmin] = useState(false); // To implement check later
+  const [groupLoading, setGroupLoading] = useState(false);
+
   // Popups State
   const [showNewGroup, setShowNewGroup] = useState(false);
   const [showNewChat, setShowNewChat] = useState(false);
@@ -98,18 +116,13 @@ export default function InboxPage() {
         // If error is "instance not connected" or similar, don't use mock, just show empty or error
         const errorMsg = error?.message?.toLowerCase() || '';
         if (errorMsg.includes('instance') && (errorMsg.includes('not found') || errorMsg.includes('not connected'))) {
-            setIsUsingMock(false);
-            // You might want to set a state here to show a "Connect WhatsApp" button in the UI
             setConversations([]); 
             return;
         }
 
-        setIsUsingMock(true);
-        // Fallback to mock if API fails (dev mode without real connection)
-        fetch('/api/inbox')
-            .then(res => res.json())
-            .then(data => setConversations(data.conversations))
-            .catch(err => console.error('Fallback failed', err));
+        setIsUsingMock(false);
+        // Fallback removed - show empty state instead of mock
+        setConversations([]);
     } finally {
         setRefreshing(false);
     }
@@ -138,18 +151,29 @@ export default function InboxPage() {
             }
 
             const safeName = String(chat.name || chat.wa_name || chat.wa_contactName || chat.number || chat.id.split('@')[0] || 'Desconhecido');
+            
+            // Extract status and sender for last message
+            const lastMsgStatus = chat.last_message?.status || chat.wa_lastMessageStatus || 'SENT';
+            const lastMsgSender = (chat.last_message?.key?.fromMe || chat.wa_lastMessageFromMe) ? 'me' : 'other';
 
             return {
                 id: chat.wa_chatid || chat.id,
                 name: safeName,
                 lastMsg: typeof lastContent === 'string' ? lastContent : '...',
+                lastMsgStatus,
+                lastMsgSender,
                 time: timestamp ? new Date(Number(timestamp)).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '',
+                timestamp: Number(timestamp || 0),
                 unread: chat.wa_unreadCount || chat.unread_count || 0,
                 online: true, // Mock for now
                 channel: 'whatsapp', // Uazapi defaults to WhatsApp
                 image: chat.imagePreview || chat.image || null
             };
         });
+        
+        // Sort by timestamp descending (newest first)
+        mappedChats.sort((a: any, b: any) => b.timestamp - a.timestamp);
+        
         setConversations(mappedChats);
   };
 
@@ -187,7 +211,7 @@ export default function InboxPage() {
                  if (msgsData.length > 0 && msgsData[0]) console.log("First message structure:", JSON.stringify(msgsData[0]));
 
                  if (msgsData.length > 0) {
-                     setMessages(msgsData.map((m: any) => {
+                     const sortedMsgs = msgsData.map((m: any) => {
                          let content = m.text;
                          
                          // Fallback strategies for different message structures
@@ -239,17 +263,19 @@ export default function InboxPage() {
                              id: m.id || m.key?.id,
                              sender: (m.fromMe || m.key?.fromMe) ? 'me' : 'other',
                              text: String(finalContent), // Double safe
+                             status: m.status || 'SENT',
+                             timestamp: Number(m.messageTimestamp || m.timestamp || 0),
                              time: (m.messageTimestamp || m.timestamp) ? new Date(Number(m.messageTimestamp || m.timestamp) * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''
                          };
-                     }));
+                     }).sort((a: any, b: any) => a.timestamp - b.timestamp);
+
+                     setMessages(sortedMsgs);
                  } else {
                     setMessages([]); // Clear messages if empty
                  }
              } else {
-                 // Fallback for mock data
-                 fetch('/api/inbox')
-                    .then(res => res.json())
-                    .then(data => setMessages(data.messages));
+                 // Fallback removed - show empty
+                 setMessages([]);
              }
         } catch (error) {
             console.error('Failed to fetch messages', error);
@@ -260,6 +286,144 @@ export default function InboxPage() {
 
     fetchMessages();
   }, [activeChat]);
+
+  // Fetch Group Details when activeChat is a group
+  const fetchGroupDetails = async () => {
+      if (!activeChat || typeof activeChat !== 'string' || !activeChat.endsWith('@g.us')) return;
+      
+      setGroupLoading(true);
+      try {
+          // Fetch group info (participants, admins, etc)
+          const response = await uazapiClient.groups.getGroup(activeChat);
+          console.log('Group Details:', response);
+          
+          if (response) {
+              if (response.desc || response.description) setGroupDescription(response.desc || response.description);
+              if (response.subject || response.name) setGroupName(response.subject || response.name);
+
+              // Handle participants - try from getGroup response first, otherwise fetch explicitly
+              let members = [];
+              if (response.participants && Array.isArray(response.participants) && response.participants.length > 0) {
+                  members = response.participants;
+              } else {
+                  try {
+                      const membersResponse = await uazapiClient.groups.listGroupMembers(activeChat);
+                      console.log('Group Members Explicit Fetch:', membersResponse);
+                      
+                      if (Array.isArray(membersResponse)) {
+                          members = membersResponse;
+                      } else if (membersResponse?.participants && Array.isArray(membersResponse.participants)) {
+                          members = membersResponse.participants;
+                      } else if (membersResponse?.data && Array.isArray(membersResponse.data)) {
+                          members = membersResponse.data;
+                      }
+                  } catch (err) {
+                      console.error('Error fetching group members explicitly:', err);
+                  }
+              }
+              
+              if (members.length > 0) {
+                  // Normalize members to ensure consistent structure
+                  const normalizedMembers = members.map((m: any) => {
+                      if (typeof m === 'string') {
+                          return { id: m, admin: false, name: null };
+                      }
+                      // Handle various field names for participants
+                      return {
+                          id: m.id || m.jid || m.number || 'unknown',
+                          admin: m.admin === 'admin' || m.admin === 'superadmin' || m.admin === true || m.isAdmin === true || m.isSuperAdmin === true,
+                          name: m.name || m.notify || m.verifiedName || m.pushName || null,
+                          image: m.imgUrl || m.image || m.profilePictureUrl || null
+                      };
+                  });
+                  setGroupMembers(normalizedMembers);
+              }
+          } 
+      } catch (error) {
+          console.error('Failed to fetch group details', error);
+      } finally {
+          setGroupLoading(false);
+      }
+  };
+
+  useEffect(() => {
+      if (!activeChat || typeof activeChat !== 'string' || !activeChat.endsWith('@g.us')) {
+          setGroupMembers([]);
+          return;
+      }
+      fetchGroupDetails();
+  }, [activeChat]);
+
+  // Group Actions
+  const handlePromoteParticipant = async (participantId: string) => {
+      if (!activeChat || typeof activeChat !== 'string') return;
+      try {
+          await uazapiClient.groups.promoteGroupMember(activeChat, participantId);
+          alert('Participante promovido!');
+          // Refresh members?
+      } catch (error) {
+          console.error('Failed to promote', error);
+          alert('Erro ao promover');
+      }
+  };
+
+  const handleDemoteParticipant = async (participantId: string) => {
+      if (!activeChat || typeof activeChat !== 'string') return;
+      try {
+          await uazapiClient.groups.demoteGroupMember(activeChat, participantId);
+          alert('Participante rebaixado!');
+      } catch (error) {
+          console.error('Failed to demote', error);
+          alert('Erro ao rebaixar');
+      }
+  };
+
+  const handleRemoveParticipant = async (participantId: string) => {
+      if (!activeChat || typeof activeChat !== 'string') return;
+      if (!confirm('Tem certeza que deseja remover este participante?')) return;
+      try {
+          await uazapiClient.groups.removeGroupMember(activeChat, participantId);
+          alert('Participante removido!');
+          setGroupMembers(prev => prev.filter(m => m.id !== participantId));
+      } catch (error) {
+          console.error('Failed to remove', error);
+          alert('Erro ao remover');
+      }
+  };
+
+  const handleUpdateGroupDescription = async () => {
+      if (!activeChat || typeof activeChat !== 'string') return;
+      try {
+          await uazapiClient.groups.updateGroup(activeChat, { description: groupDescription });
+          alert('Descrição atualizada!');
+      } catch (error) {
+          console.error('Failed to update description', error);
+          alert('Erro ao atualizar descrição');
+      }
+  };
+
+  const handleUpdateGroupName = async () => {
+      if (!activeChat || typeof activeChat !== 'string') return;
+      try {
+          await uazapiClient.groups.updateGroup(activeChat, { name: groupName });
+          alert('Nome atualizado!');
+          // Optimistic update list
+          setConversations(prev => prev.map(c => c.id === activeChat ? { ...c, name: groupName } : c));
+      } catch (error) {
+          console.error('Failed to update name', error);
+          alert('Erro ao atualizar nome');
+      }
+  };
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+      if (messages.length > 0) {
+          const lastMsgElement = document.getElementById("last-message");
+          if (lastMsgElement) {
+              lastMsgElement.scrollIntoView({ behavior: "smooth" });
+          }
+      }
+  }, [messages]);
 
   // Send Message
   const handleSendMessage = async (text: string) => {
@@ -294,7 +458,86 @@ export default function InboxPage() {
       );
   };
 
-  const filteredConversations = conversations.filter(c => visibleChannels.includes(c.channel));
+  const handleCreateGroup = async (name: string, participants: string[]) => {
+    setLoading(true);
+    try {
+        const result = await uazapiClient.groups.createGroup(name, participants);
+        console.log('Group created:', result);
+        
+        // Force sync to fetch the new group
+        await uazapiClient.chats.syncChats();
+        
+        // Refresh chat list
+        await fetchChats();
+        
+        // Optimistic add if fetch didn't catch it yet (and we have a GID)
+        // result usually looks like { success: true, gid: "12345@g.us" } or just the gid string depending on implementation
+        // Safely try to extract gid
+        const newGid = (result as any)?.gid || (result as any)?.id || (typeof result === 'string' ? result : null);
+        
+        if (newGid && !conversations.find(c => c.id === newGid)) {
+             const newGroupChat = {
+                id: newGid,
+                name: name,
+                lastMsg: 'Grupo criado',
+                lastMsgStatus: 'SENT',
+                lastMsgSender: 'me',
+                time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+                timestamp: Date.now(),
+                unread: 0,
+                online: false,
+                channel: 'whatsapp',
+                image: null
+            };
+            setConversations(prev => [newGroupChat, ...prev]);
+            setActiveChat(newGid);
+        }
+
+        alert('Grupo criado com sucesso!');
+    } catch (error) {
+        console.error('Failed to create group', error);
+        alert('Erro ao criar grupo');
+    } finally {
+        setLoading(false);
+    }
+  };
+
+  const handleStartNewChat = (data: any) => {
+    const contact = data.contact;
+    if (!contact) return;
+
+    // Check if conversation exists
+    const existing = conversations.find(c => 
+        c.id.includes(contact) || c.name.toLowerCase() === contact.toLowerCase()
+    );
+
+    if (existing) {
+        setActiveChat(existing.id);
+    } else {
+        // Create optimistic conversation
+        const newChatId = contact.includes('@') ? contact : `${contact}@s.whatsapp.net`;
+        const newChat = {
+            id: newChatId,
+            name: contact,
+            lastMsg: 'Nova conversa',
+            time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+            unread: 0,
+            online: false,
+            channel: 'whatsapp',
+            image: null
+        };
+        setConversations([newChat, ...conversations]);
+        setActiveChat(newChatId);
+    }
+    setShowNewChat(false);
+  };
+
+  const filteredConversations = conversations
+    .filter(c => visibleChannels.includes(c.channel))
+    .filter(c => 
+        c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        c.id.toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
   const getChannelIcon = (channel: string) => {
       switch(channel) {
@@ -304,6 +547,22 @@ export default function InboxPage() {
           case 'facebook': return <Facebook className="h-3 w-3 text-blue-600" />;
           default: return <MessageSquare className="h-3 w-3" />;
       }
+  };
+
+  const getStatusIcon = (status: any, customClass?: string) => {
+      const s = String(status).toUpperCase();
+      const baseClass = customClass || "h-3 w-3 text-zinc-400";
+      
+      // Blue check for Read/Seen
+      if (['READ', 'SEEN', 'PLAYED', '3', '4'].includes(s)) {
+          return <CheckCheck className={cn(baseClass, !customClass && "text-blue-500")} />;
+      }
+      // Double check gray for Delivered/Received
+      if (['DELIVERED', 'RECEIVED', '2'].includes(s)) {
+          return <CheckCheck className={baseClass} />;
+      }
+      // Single check for Sent
+      return <Check className={baseClass} />;
   };
 
   return (
@@ -371,6 +630,8 @@ export default function InboxPage() {
                 <input 
                 type="text" 
                 placeholder="Buscar..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
                 className={cn(
                     "w-full border-none rounded-lg pl-8 pr-3 py-1.5 text-xs focus:ring-1 transition-all",
                     isDark 
@@ -416,7 +677,10 @@ export default function InboxPage() {
                   </span>
                   <span className="text-[9px] text-zinc-500">{chat.time}</span>
                 </div>
-                <p className="text-[10px] text-zinc-500 truncate">{chat.lastMsg}</p>
+                <div className="flex items-center gap-1 overflow-hidden">
+                    {chat.lastMsgSender === 'me' && getStatusIcon(chat.lastMsgStatus, "h-3 w-3 min-w-[12px]")}
+                    <p className="text-[10px] text-zinc-500 truncate">{chat.lastMsg}</p>
+                </div>
               </div>
             </div>
           ))}
@@ -459,8 +723,8 @@ export default function InboxPage() {
                   </div>
               )}
 
-              {messages.map((msg) => (
-                  <div key={msg.id} className={cn("flex gap-2", msg.sender === 'me' ? "flex-row-reverse" : "")}>
+              {messages.map((msg, index) => (
+                  <div key={msg.id || index} className={cn("flex gap-2", msg.sender === 'me' ? "flex-row-reverse" : "")} id={index === messages.length - 1 ? "last-message" : undefined}>
                      {msg.sender !== 'me' && (
                          <CRMAvatar 
                             initials={conversations.find(c => c.id === activeChat)?.name.slice(0,2).toUpperCase() || "?"} 
@@ -478,7 +742,7 @@ export default function InboxPage() {
                         <p>{msg.text}</p>
                         <div className={cn("flex items-center gap-1 mt-1", msg.sender === 'me' ? "justify-end" : "")}>
                           <span className={cn("text-[9px]", msg.sender === 'me' ? `text-${themeColor}-100 opacity-80` : "text-zinc-500")}>{msg.time}</span>
-                          {msg.sender === 'me' && <CheckCircle2 className={cn("h-2.5 w-2.5", `text-${themeColor}-100 opacity-80`)} />}
+                          {msg.sender === 'me' && getStatusIcon(msg.status, cn("h-3 w-3", `text-${themeColor}-100 opacity-80`))}
                         </div>
                      </div>
                   </div>
@@ -534,12 +798,12 @@ export default function InboxPage() {
       {/* Coluna 3: Info do Lead e Orientações (RESTAURADA) */}
       <div className={cn("w-72 border-l flex flex-col hidden xl:flex", isDark ? "border-zinc-800 bg-zinc-900/50" : "border-zinc-200 bg-white")}>
           <div className={cn("h-14 px-4 border-b flex items-center font-bold text-xs", isDark ? "border-zinc-800 text-zinc-400" : "border-zinc-200 text-zinc-600")}>
-              Detalhes do Lead
+              {activeChat && String(activeChat).endsWith('@g.us') ? 'Detalhes do Grupo' : 'Detalhes do Lead'}
           </div>
           <div className="flex-1 overflow-y-auto p-4 space-y-6">
               {activeChat ? (
                   <>
-                    {/* Lead Profile */}
+                    {/* Header Profile */}
                     <div className="text-center">
                         <CRMAvatar 
                             initials={conversations.find(c => c.id === activeChat)?.name.slice(0,2).toUpperCase() || "?"} 
@@ -548,24 +812,151 @@ export default function InboxPage() {
                             className="mx-auto mb-2" 
                             src={conversations.find(c => c.id === activeChat)?.image}
                         />
-                        <h3 className={cn("font-bold text-sm", isDark ? "text-white" : "text-zinc-900")}>
-                            {conversations.find(c => c.id === activeChat)?.name || "Desconhecido"}
-                        </h3>
-                        <p className="text-zinc-500 text-xs">Lead</p>
-                        <div className="flex justify-center gap-2 mt-3">
-                            <CRMBadge themeColor={themeColor} isDark={isDark}>Novo</CRMBadge>
+                        <div className="flex justify-center items-center gap-2 mb-2">
+                            <input 
+                                type="text"
+                                value={groupName}
+                                onChange={(e) => setGroupName(e.target.value)}
+                                className={cn(
+                                    "font-bold text-sm text-center bg-transparent border-b border-transparent focus:border-zinc-500 outline-none transition-all w-full",
+                                    isDark ? "text-white" : "text-zinc-900"
+                                )}
+                            />
+                            <button 
+                                onClick={handleUpdateGroupName}
+                                title="Salvar Nome"
+                                className="bg-emerald-500 hover:bg-emerald-600 text-white p-1 rounded-full transition-colors flex-shrink-0"
+                            >
+                                <Check className="h-3 w-3" />
+                            </button>
                         </div>
+                        <p className="text-zinc-500 text-xs mb-2">
+                            {String(activeChat).endsWith('@g.us') ? 'Grupo WhatsApp' : 'Lead'}
+                        </p>
+
+                        {String(activeChat).endsWith('@g.us') && (
+                            <button 
+                                onClick={async () => {
+                                    const url = prompt("Cole a URL da nova imagem do grupo:");
+                                    if (url) {
+                                        try {
+                                            await uazapiClient.groups.updateGroupPicture(activeChat, url);
+                                            alert("Foto atualizada com sucesso!");
+                                        } catch (e) {
+                                            console.error(e);
+                                            alert("Erro ao atualizar foto.");
+                                        }
+                                    }
+                                }}
+                                className="text-[10px] text-zinc-400 hover:text-zinc-500 underline cursor-pointer"
+                            >
+                                Alterar Foto
+                            </button>
+                        )}
+                        {!String(activeChat).endsWith('@g.us') && (
+                            <div className="flex justify-center gap-2 mt-3">
+                                <CRMBadge themeColor={themeColor} isDark={isDark}>Novo</CRMBadge>
+                            </div>
+                        )}
+                        
+                        {/* Group Description & Photo Edit Placeholder */}
+                        {String(activeChat).endsWith('@g.us') && (
+                             <div className="mt-3 px-4">
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="text-[10px] font-bold uppercase text-zinc-500 tracking-wider">Descrição</label>
+                                    <button onClick={handleUpdateGroupDescription} className="text-emerald-500 hover:text-emerald-600 text-[10px]">Salvar</button>
+                                </div>
+                                <textarea 
+                                    value={groupDescription}
+                                    onChange={(e) => setGroupDescription(e.target.value)}
+                                    className={cn(
+                                        "w-full h-20 p-2 rounded text-xs resize-none border focus:outline-none focus:ring-1",
+                                        isDark ? "bg-zinc-800/50 border-zinc-700 text-zinc-300" : "bg-zinc-50 border-zinc-200 text-zinc-700"
+                                    )}
+                                    placeholder="Adicionar descrição..."
+                                />
+                             </div>
+                        )}
                     </div>
 
-                    {/* Contact Info */}
-                    <div className={cn("p-3 rounded-lg border space-y-2", isDark ? "bg-zinc-800/30 border-zinc-800" : "bg-zinc-50 border-zinc-200")}>
-                        <div className="flex items-center gap-2 text-xs">
-                            <Phone className="h-3.5 w-3.5 text-zinc-500" />
-                            <span className={isDark ? "text-zinc-300" : "text-zinc-700"}>
-                                {conversations.find(c => c.id === activeChat)?.id.split('@')[0] || "-"}
-                            </span>
+                    {/* Contact Info (Individual) */}
+                    {!String(activeChat).endsWith('@g.us') && (
+                        <div className={cn("p-3 rounded-lg border space-y-2", isDark ? "bg-zinc-800/30 border-zinc-800" : "bg-zinc-50 border-zinc-200")}>
+                            <div className="flex items-center gap-2 text-xs">
+                                <Phone className="h-3.5 w-3.5 text-zinc-500" />
+                                <span className={isDark ? "text-zinc-300" : "text-zinc-700"}>
+                                    {conversations.find(c => c.id === activeChat)?.id.split('@')[0] || "-"}
+                                </span>
+                            </div>
                         </div>
-                    </div>
+                    )}
+
+                    {/* Group Participants List */}
+                    {String(activeChat).endsWith('@g.us') && (
+                        <div className="space-y-3">
+                            <div className="flex items-center justify-between">
+                                <h4 className="text-[10px] font-bold uppercase text-zinc-500 tracking-wider flex items-center gap-1">
+                                    <Users className="h-3 w-3" /> Participantes ({groupMembers.length})
+                                </h4>
+                                <button 
+                                    onClick={fetchGroupDetails}
+                                    className="text-zinc-400 hover:text-zinc-600"
+                                    title="Recarregar Membros"
+                                >
+                                    <RefreshCw className={cn("h-3 w-3", groupLoading && "animate-spin")} />
+                                </button>
+                            </div>
+                            {groupLoading ? (
+                                <p className="text-xs text-zinc-500 text-center py-2">Carregando...</p>
+                            ) : groupMembers.length === 0 ? (
+                                <div className="text-center py-4 space-y-2">
+                                    <p className="text-xs text-zinc-500">Nenhum participante encontrado.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-2">
+                                    {groupMembers.map((member: any) => (
+                                        <div key={member.id} className={cn("p-2 rounded flex items-center justify-between group", isDark ? "bg-zinc-800/30 hover:bg-zinc-800" : "bg-zinc-50 hover:bg-zinc-100")}>
+                                            <div className="flex items-center gap-2 overflow-hidden">
+                                                <CRMAvatar 
+                                                    initials={member.name ? member.name.slice(0,2).toUpperCase() : member.id.slice(0,2)} 
+                                                    size="xs" 
+                                                    className="h-6 w-6"
+                                                    src={member.image}
+                                                />
+                                                <div className="flex flex-col min-w-0">
+                                                    <span className={cn("text-xs truncate w-32", isDark ? "text-zinc-300" : "text-zinc-700")}>
+                                                        {member.name || member.id.split('@')[0]}
+                                                    </span>
+                                                    <span className="text-[9px] text-zinc-500 truncate">
+                                                        {member.id.split('@')[0]}
+                                                    </span>
+                                                    {member.admin && (
+                                                        <span className="text-[9px] text-emerald-500 font-medium">Admin</span>
+                                                    )}
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Admin Actions */}
+                                            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                {member.admin ? (
+                                                    <button onClick={() => handleDemoteParticipant(member.id)} title="Remover Admin" className="text-amber-500 hover:text-amber-600">
+                                                        <ShieldAlert className="h-3 w-3" />
+                                                    </button>
+                                                ) : (
+                                                    <button onClick={() => handlePromoteParticipant(member.id)} title="Promover Admin" className="text-emerald-500 hover:text-emerald-600">
+                                                        <Shield className="h-3 w-3" />
+                                                    </button>
+                                                )}
+                                                <button onClick={() => handleRemoveParticipant(member.id)} title="Remover do Grupo" className="text-red-500 hover:text-red-600">
+                                                    <Trash2 className="h-3 w-3" />
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Box de Orientações Editável */}
                     <div className="space-y-2">
@@ -594,15 +985,12 @@ export default function InboxPage() {
       </div>
 
       {/* Popups do Inbox */}
-      <SimpleInputModal 
+      <CreateGroupDialog 
           isOpen={showNewGroup}
           onClose={() => setShowNewGroup(false)}
-          title="Criar Novo Grupo"
-          submitLabel="Criar"
+          onCreate={handleCreateGroup}
           isDark={isDark}
           themeColor={themeColor}
-          onSave={(data: any) => console.log("Grupo criado", data)}
-          fields={[{ label: "Nome do Grupo", key: "name", placeholder: "Ex: Vendas Setembro" }]}
       />
       <SimpleInputModal 
           isOpen={showNewChat}
@@ -611,8 +999,8 @@ export default function InboxPage() {
           submitLabel="Iniciar"
           isDark={isDark}
           themeColor={themeColor}
-          onSave={(data: any) => console.log("Conversa iniciada", data)}
-          fields={[{ label: "Número ou Email", key: "contact", placeholder: "+55..." }]}
+          onSave={handleStartNewChat}
+          fields={[{ label: "Número ou Email", key: "contact", placeholder: "Ex: 5511999999999" }]}
       />
     </div>
     </CRMAuthenticatedLayout>

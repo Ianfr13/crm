@@ -13,6 +13,8 @@ import { CRMButton } from '@/components/ui/crm-button';
 import { CRMAvatar } from '@/components/ui/crm-avatar';
 import { useCRMTheme } from '@/providers/crm-theme-provider';
 import { CRMAuthenticatedLayout } from '@/components/layout/crm-authenticated-layout';
+import { apiClient } from '@/lib/api/client';
+import { uazapiClient } from '@/lib/api/uazapi-client';
 
 export default function DashboardPage() {
   const { themeColor, isDark } = useCRMTheme();
@@ -26,17 +28,42 @@ export default function DashboardPage() {
   const [topContacts, setTopContacts] = React.useState<any[]>([]);
 
   React.useEffect(() => {
-    fetch('/api/dashboard')
-      .then(res => res.json())
-      .then(data => {
-        if (data.stats) {
-            const icons = [Users, MessageSquare, TrendingUp, Clock];
-            setStats(data.stats.map((stat: any, i: number) => ({ ...stat, icon: icons[i] || Users })));
+    const loadData = async () => {
+        try {
+            // 1. Fetch Contacts Count
+            const contacts = await apiClient.getContacts();
+            const contactsCount = Array.isArray(contacts) ? contacts.length : 0;
+
+            // 2. Fetch Active Chats Count (from UazAPI)
+            let activeChatsCount = 0;
+            try {
+                const chats = await uazapiClient.chats.listChats();
+                if (Array.isArray(chats)) {
+                    activeChatsCount = chats.length;
+                } else if (chats?.data?.chats && Array.isArray(chats.data.chats)) {
+                    activeChatsCount = chats.data.chats.length;
+                }
+            } catch (e) {
+                console.log('UazAPI offline or empty', e);
+            }
+
+            setStats([
+                { label: 'Contatos', value: String(contactsCount), change: '0%', trend: 'neutral', color: 'text-indigo-500', bg: 'bg-indigo-500/10', icon: Users },
+                { label: 'Ativos', value: String(activeChatsCount), change: '0%', trend: 'neutral', color: 'text-emerald-500', bg: 'bg-emerald-500/10', icon: MessageSquare },
+                { label: 'Pipeline', value: 'R$ 0', change: '0%', trend: 'neutral', color: 'text-violet-500', bg: 'bg-violet-500/10', icon: TrendingUp },
+                { label: 'Tempo', value: '0m', change: '0m', trend: 'neutral', color: 'text-amber-500', bg: 'bg-amber-500/10', icon: Clock },
+            ]);
+
+            // Clear fake activity and top contacts
+            setActivity([]);
+            setTopContacts([]);
+
+        } catch (error) {
+            console.error('Failed to load dashboard data', error);
         }
-        if (data.activity) setActivity(data.activity);
-        if (data.topContacts) setTopContacts(data.topContacts);
-      })
-      .catch(err => console.error('Failed to fetch dashboard data', err));
+    };
+
+    loadData();
   }, []);
 
   return (
