@@ -36,7 +36,7 @@ export default function IntegrationPage() {
                 </div>
                 <div className="flex gap-2">
                     <CRMBadge 
-                        variant={chatwootStatus === 'connected' ? 'success' : 'danger'} 
+                        variant={chatwootStatus === 'connected' ? 'success' : 'warning'} 
                         themeColor={chatwootStatus === 'connected' ? 'emerald' : 'red'} 
                         isDark={isDark}
                     >
@@ -71,7 +71,7 @@ export default function IntegrationPage() {
                     </div>
                     
                     <div className="flex gap-2">
-                        <CRMButton size="sm" variant="destructive" className="w-full text-[10px]" isDark={isDark}>Desconectar</CRMButton>
+                        <CRMButton size="sm" variant="danger" className="w-full text-[10px]" isDark={isDark}>Desconectar</CRMButton>
                         <CRMButton size="sm" variant="outline" className="w-full text-[10px]" isDark={isDark}>Reiniciar</CRMButton>
                     </div>
                 </div>

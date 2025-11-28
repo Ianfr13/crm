@@ -734,7 +734,7 @@ export default function InboxPage() {
                     initials={chat.name.slice(0, 2).toUpperCase()} 
                     size="md" 
                     color={isDark ? "bg-zinc-700" : "bg-zinc-200 text-zinc-700"} 
-                    src={chat.image}
+                    src={chat.image ?? undefined}
                 />
                 {chat.online && <div className={cn("absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2", isDark ? "ring-zinc-900" : "ring-white")} />}
                 <div className="absolute -top-1 -left-1 bg-zinc-900 rounded-full p-0.5 border border-zinc-800">
@@ -776,7 +776,7 @@ export default function InboxPage() {
                     initials={activeConversation?.name?.slice(0,2).toUpperCase() || "?"} 
                     size="sm" 
                     color={isDark ? "bg-zinc-700" : "bg-zinc-200 text-zinc-700"} 
-                    src={activeConversation?.image}
+                    src={activeConversation?.image ?? undefined}
                 />
                 <div>
                     <span className={cn("font-bold text-sm block", isDark ? "text-white" : "text-zinc-900")}>
@@ -862,11 +862,11 @@ export default function InboxPage() {
                           id={isLast ? "last-message" : undefined}
                         >
                            {msg.sender !== 'me' && (
-                               <CRMAvatar 
+                                <CRMAvatar 
                                   initials={activeConversation?.name?.slice(0,2).toUpperCase() || "?"} 
                                   size="sm" 
                                   color={isDark ? "bg-zinc-700" : "bg-zinc-200 text-zinc-600"} 
-                                  src={activeConversation?.image}
+                                  src={activeConversation?.image ?? undefined}
                                />
                            )}
                            <div className={cn(
@@ -960,7 +960,7 @@ export default function InboxPage() {
                             size="xl" 
                             themeColor={themeColor} 
                             className="mx-auto mb-2" 
-                            src={activeConversation?.image}
+                            src={activeConversation?.image ?? undefined}
                         />
                         <div className="flex justify-center items-center gap-2 mb-2">
                             <input 
