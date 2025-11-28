@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { 
   Users, 
   Plus, 
@@ -22,6 +22,8 @@ import {
   RefreshCw,
   Check,
   CheckCheck,
+  Clock,
+  XCircle,
   Trash2,
   UserMinus,
   UserPlus,
@@ -38,33 +40,10 @@ import { CreateGroupDialog } from '@/components/features/inbox/create-group-dial
 import { SimpleInputModal } from '@/components/modals/simple-input-modal';
 
 import { ChatContextMenu } from '@/components/features/inbox/chat-context-menu';
-import { uazapiClient } from '@/lib/api/uazapi-client';
-
-// Helper to normalize timestamps to milliseconds
-const normalizeTimestamp = (ts: any): number => {
-  if (!ts) return 0;
-  
-  // Handle if it's already a Date object (unlikely but possible)
-  if (ts instanceof Date) return ts.getTime();
-
-  const num = Number(ts);
-  
-  if (!isNaN(num) && num > 0) {
-      // Heuristic: Unix timestamps in seconds are usually 10 digits (~1.7e9)
-      // Milliseconds are 13 digits (~1.7e12)
-      // Cutoff: 1e11 (100 billion) - effectively year 5138 if seconds
-      if (num < 100000000000) {
-          return num * 1000;
-      }
-      return num;
-  }
-  
-  // Try parsing as ISO string or other date format
-  const date = new Date(ts);
-  if (!isNaN(date.getTime())) return date.getTime();
-  
-  return 0;
-};
+import { chatwootClient } from '@/lib/api/chatwoot-client'; // New Client
+// import { uazapiClient } from '@/lib/api/uazapi-client'; // Deprecated for Inbox
+import { mapChatwootConversationToLocal, mapChatwootMessageToLocal } from '@/lib/mappers/chatwoot-mapper';
+import type { ChatConversation, ChatMessage } from '@/types/chat';
 
 export default function InboxPage() {
   const { themeColor, isDark } = useCRMTheme();
@@ -73,6 +52,7 @@ export default function InboxPage() {
   const [orientations, setOrientations] = useState("Cliente interessado no plano Enterprise. \n\nPreferência por contato via WhatsApp à tarde.");
   
   // Search State
+  const [searchInput, setSearchInput] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   
   // Group Management State
@@ -87,137 +67,109 @@ export default function InboxPage() {
   const [showNewChat, setShowNewChat] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; chat: any } | null>(null);
 
-  const [conversations, setConversations] = useState<any[]>([]);
-  const [messages, setMessages] = useState<any[]>([]);
+  const [conversations, setConversations] = useState<ChatConversation[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messageLimit, setMessageLimit] = useState<number>(50);
   const [loading, setLoading] = useState(false);
+  const [messageInput, setMessageInput] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const [isUsingMock, setIsUsingMock] = useState(false);
 
-  // Fetch Chats (Real Uazapi Integration)
-  const fetchChats = async () => {
+  // Message list scroll/perf state
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const [isNearBottom, setIsNearBottom] = useState(true);
+  const [isLoadingOlder, setIsLoadingOlder] = useState(false);
+  const ESTIMATED_MESSAGE_HEIGHT = 72; // px
+  const VIRTUAL_OVERSCAN = 6;
+  const [visibleRange, setVisibleRange] = useState({ start: 0, end: 100 });
+
+  // Debounce search input para suavizar o filtro
+  useEffect(() => {
+    const id = setTimeout(() => setSearchQuery(searchInput), 200);
+    return () => clearTimeout(id);
+  }, [searchInput]);
+
+  // Ajusta janela virtual de mensagens quando a lista muda
+  useEffect(() => {
+    const total = messages.length;
+    if (!messagesContainerRef.current) {
+      setVisibleRange({ start: 0, end: total });
+      return;
+    }
+    if (total === 0) {
+      setVisibleRange({ start: 0, end: 0 });
+      return;
+    }
+    if (total <= 200) {
+      setVisibleRange({ start: 0, end: total });
+      return;
+    }
+    const el = messagesContainerRef.current;
+    const viewCapacity =
+      Math.ceil(el.clientHeight / ESTIMATED_MESSAGE_HEIGHT) + VIRTUAL_OVERSCAN * 2;
+    const start = Math.max(0, total - viewCapacity);
+    const end = total;
+    setVisibleRange({ start, end });
+  }, [messages.length]);
+
+  // Fetch Chats (Chatwoot Engine)
+  const fetchChats = useCallback(async () => {
     setRefreshing(true);
     try {
-        const response = await uazapiClient.chats.listChats();
-        // Extract chats array from various possible structures
-        let chats: any[] = [];
-        if (response?.data?.chats && Array.isArray(response.data.chats)) {
-            chats = response.data.chats;
-        } else if (response?.data && Array.isArray(response.data)) {
-            chats = response.data;
-        } else if (Array.isArray(response)) {
-            chats = response;
-        }
+        // Headless Mode: Fetch from Chatwoot via Gateway
+        const cwConversations = await chatwootClient.getConversations('open');
         
-        // Auto-sync if list is empty
-        if (chats.length === 0) {
-            try {
-                await uazapiClient.chats.syncChats();
-                // Fetch again after sync
-                const syncedResponse = await uazapiClient.chats.listChats();
-                
-                let syncedChats: any[] = [];
-                if (syncedResponse?.data?.chats && Array.isArray(syncedResponse.data.chats)) {
-                    syncedChats = syncedResponse.data.chats;
-                } else if (syncedResponse?.data && Array.isArray(syncedResponse.data)) {
-                    syncedChats = syncedResponse.data;
-                } else if (Array.isArray(syncedResponse)) {
-                    syncedChats = syncedResponse;
-                }
-                
-                if (syncedChats.length > 0) {
-                    updateConversations(syncedChats);
-                    setIsUsingMock(false);
-                    return;
-                }
-            } catch (syncError) {
-                console.error('Auto-sync failed', syncError);
-            }
-        }
-
-        if (chats.length > 0) {
-            updateConversations(chats);
+        if (cwConversations && Array.isArray(cwConversations)) {
+            const mapped = cwConversations.map(mapChatwootConversationToLocal);
+            
+            // Sort by timestamp
+            mapped.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+            
+            setConversations(mapped);
             setIsUsingMock(false);
         } else {
-             // If strictly empty and no sync worked
-             // Don't throw, just show empty
+            setConversations([]);
         }
     } catch (error: any) {
-        console.error('Failed to fetch Uazapi chats', error);
-        
-        // If error is "instance not connected" or similar, don't use mock, just show empty or error
-        const errorMsg = error?.message?.toLowerCase() || '';
-        if (errorMsg.includes('instance') && (errorMsg.includes('not found') || errorMsg.includes('not connected'))) {
-            setConversations([]); 
-            return;
-        }
-
+        console.error('Failed to fetch Chatwoot conversations', error);
         setIsUsingMock(false);
-        // Fallback removed - show empty state instead of mock
-        setConversations([]);
+        // Optional: Show empty or error state
     } finally {
         setRefreshing(false);
     }
-  };
-
-  const updateConversations = (chats: any[]) => {
-        const mappedChats = chats.map((chat: any) => {
-            const timestamp = normalizeTimestamp(chat.wa_lastMsgTimestamp || chat.last_message?.timestamp);
-            
-            // Safely extract last message content
-            let lastContent = chat.wa_lastMessageTextVote;
-            if (!lastContent && chat.last_message?.content) {
-                const c = chat.last_message.content;
-                if (typeof c === 'string') {
-                    lastContent = c;
-                } else if (c && typeof c === 'object') {
-                    // Handle potential object content in last_message
-                    lastContent = c.text || c.caption || (c.message?.conversation) || (c.extendedTextMessage?.text) || 'Conteúdo de mídia';
-                }
-            } else if (!lastContent && chat.last_message?.message) {
-                 // Handle nested message object in last_message root
-                 const m = chat.last_message.message;
-                 if (m) {
-                    lastContent = m.conversation || m.extendedTextMessage?.text || m.imageMessage?.caption || 'Conteúdo de mídia';
-                 }
-            }
-
-            const safeName = String(chat.name || chat.wa_name || chat.wa_contactName || chat.number || chat.id.split('@')[0] || 'Desconhecido');
-            
-            // Extract status and sender for last message
-            const lastMsgStatus = chat.last_message?.status || chat.wa_lastMessageStatus || 'SENT';
-            const lastMsgSender = (chat.last_message?.key?.fromMe || chat.wa_lastMessageFromMe) ? 'me' : 'other';
-
-            return {
-                id: chat.wa_chatid || chat.id,
-                name: safeName,
-                lastMsg: typeof lastContent === 'string' ? lastContent : '...',
-                lastMsgStatus,
-                lastMsgSender,
-                time: timestamp ? new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '',
-                timestamp: timestamp,
-                unread: chat.wa_unreadCount || chat.unread_count || 0,
-                online: true, // Mock for now
-                channel: 'whatsapp', // Uazapi defaults to WhatsApp
-                image: chat.imagePreview || chat.image || null
-            };
-        });
-        
-        // Sort by pinned first, then timestamp descending (newest first)
-        mappedChats.sort((a: any, b: any) => {
-            if (a.pinned && !b.pinned) return -1;
-            if (!a.pinned && b.pinned) return 1;
-            return b.timestamp - a.timestamp;
-        });
-        
-        setConversations(mappedChats);
-  };
+  }, []);
 
   useEffect(() => {
+    let intervalId: ReturnType<typeof setInterval> | null = null;
+
+    const setupInterval = () => {
+      if (intervalId) clearInterval(intervalId);
+      if (typeof document === 'undefined') return;
+      if (document.visibilityState !== 'visible') return;
+      intervalId = setInterval(fetchChats, 15000);
+    };
+
+    const handleVisibilityChange = () => {
+      setupInterval();
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        fetchChats();
+      }
+    };
+
     fetchChats();
-    // Poll for new chats every 15 seconds
-    const interval = setInterval(fetchChats, 15000);
-    return () => clearInterval(interval);
-  }, []);
+    setupInterval();
+
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
+    }
+
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
+      }
+    };
+  }, [fetchChats]);
 
   // Fetch Messages when Chat Selected
   useEffect(() => {
@@ -226,105 +178,25 @@ export default function InboxPage() {
     const fetchMessages = async () => {
         setLoading(true);
         try {
-             // Check if it's a mock ID (number) or real ID (string)
-             if (typeof activeChat === 'string') {
-                 const response = await uazapiClient.chats.getMessages(activeChat);
-                 
-                 // Robust data extraction for messages
-                 let msgsData: any[] = [];
-                 if (response?.data?.messages && Array.isArray(response.data.messages)) {
-                     msgsData = response.data.messages;
-                 } else if (response?.messages && Array.isArray(response.messages)) {
-                     msgsData = response.messages;
-                 } else if (response?.data && Array.isArray(response.data)) {
-                     msgsData = response.data;
-                 } else if (Array.isArray(response)) {
-                     msgsData = response;
-                 }
+             const cwMessages = await chatwootClient.getMessages(activeChat);
+             
+             if (cwMessages && Array.isArray(cwMessages)) {
+                 const mapped = cwMessages.map(mapChatwootMessageToLocal);
+                 const sortedMsgs = mapped.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
 
-                 console.log("Messages fetched (RAW):", msgsData); // Debug
-                 if (msgsData.length > 0 && msgsData[0]) console.log("First message structure:", JSON.stringify(msgsData[0]));
-
-                 if (msgsData.length > 0) {
-                     const sortedMsgs = msgsData.map((m: any) => {
-                         let content = m.text;
-                         
-                         // Fallback strategies for different message structures
-                         if (!content) {
-                             if (m.content && typeof m.content === 'object') {
-                                 content = m.content.text || m.content.caption || (typeof m.content.message === 'string' ? m.content.message : '');
-                             } 
-                             
-                             if (!content && typeof m.content === 'string') {
-                                 content = m.content;
-                             } else if (!content && m.body) {
-                                 content = m.body;
-                             } else if (!content && m.message) {
-                                 if (m.message.conversation) content = m.message.conversation;
-                                 else if (m.message.extendedTextMessage?.text) content = m.message.extendedTextMessage.text;
-                                 else if (m.message.imageMessage?.caption) content = m.message.imageMessage.caption;
-                                 else if (m.message.documentMessage?.caption) content = m.message.documentMessage.caption;
-                                 else if (m.message.videoMessage?.caption) content = m.message.videoMessage.caption;
-                             }
-                         }
-
-                         // Handle media types labels if still empty
-                         if (!content) {
-                             const type = m.messageType || m.type;
-                             // Defensive check if type is an object (it shouldn't be, but API...)
-                             if (typeof type === 'string') {
-                                if (type === 'ImageMessage' || type === 'image') content = '📷 Imagem';
-                                else if (type === 'AudioMessage' || type === 'audio') content = '🎤 Áudio';
-                                else if (type === 'VideoMessage' || type === 'video') content = '🎥 Vídeo';
-                                else if (type === 'DocumentMessage' || type === 'document') content = '📄 Documento';
-                                else if (type === 'StickerMessage' || type === 'sticker') content = '👾 Figurinha';
-                                else if (type === 'ContactMessage') content = '👤 Contato';
-                                else if (type === 'LocationMessage') content = '📍 Localização';
-                                else content = 'Mensagem';
-                             } else {
-                                 content = 'Mensagem';
-                             }
-                         }
-
-                         // Final safety check: ensure content is a string and not an object structure
-                         let finalContent = String(content || '');
-                         if (content && typeof content === 'object') {
-                             // If somehow an object slipped through, try to find text in common places or stringify carefully
-                             // But prevent passing [object Object] if possible, prefer a label
-                             finalContent = (content as any).text || (content as any).caption || 'Conteúdo de mídia';
-                         }
-
-                         const timestamp = normalizeTimestamp(m.messageTimestamp || m.timestamp);
-
-                         return {
-                             id: m.id || m.key?.id,
-                             sender: (m.fromMe || m.key?.fromMe) ? 'me' : 'other',
-                             senderId: m.participant || m.key?.participant || m.key?.remoteJid || '',
-                             senderName: m.pushName || m.notifyName || m.verifiedName || null,
-                             text: String(finalContent), // Double safe
-                             status: m.status || 'SENT',
-                             timestamp: timestamp,
-                             time: timestamp ? new Date(timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : ''
-                         };
-                     }).sort((a: any, b: any) => a.timestamp - b.timestamp);
-
-                     setMessages(sortedMsgs);
-                 } else {
-                    setMessages([]); // Clear messages if empty
-                 }
+                 setMessages(sortedMsgs);
              } else {
-                 // Fallback removed - show empty
-                 setMessages([]);
+                setMessages([]); // Clear messages if empty
              }
         } catch (error) {
-            console.error('Failed to fetch messages', error);
+            console.error('Failed to fetch Chatwoot messages', error);
         } finally {
             setLoading(false);
         }
     };
 
     fetchMessages();
-  }, [activeChat]);
+  }, [activeChat, messageLimit]);
 
   // Fetch Group Details when activeChat is a group
   const fetchGroupDetails = async () => {
@@ -334,7 +206,6 @@ export default function InboxPage() {
       try {
           // Fetch group info (participants, admins, etc)
           const response = await uazapiClient.groups.getGroup(activeChat);
-          console.log('Group Details:', response);
           
           if (response) {
               if (response.desc || response.description) setGroupDescription(response.desc || response.description);
@@ -347,7 +218,6 @@ export default function InboxPage() {
               } else {
                   try {
                       const membersResponse = await uazapiClient.groups.listGroupMembers(activeChat);
-                      console.log('Group Members Explicit Fetch:', membersResponse);
                       
                       if (Array.isArray(membersResponse)) {
                           members = membersResponse;
@@ -458,54 +328,100 @@ export default function InboxPage() {
       }
   };
 
-  // Auto-scroll to bottom when messages change
+  // Auto-scroll to bottom when new messages arrive and user está perto do fim
   useEffect(() => {
-      if (messages.length > 0) {
-          const lastMsgElement = document.getElementById("last-message");
-          if (lastMsgElement) {
-              lastMsgElement.scrollIntoView({ behavior: "smooth" });
-          }
+      if (!isNearBottom || messages.length === 0) return;
+      const lastMsgElement = document.getElementById("last-message");
+      if (lastMsgElement) {
+          lastMsgElement.scrollIntoView({ behavior: "smooth" });
       }
-  }, [messages]);
+  }, [messages, isNearBottom]);
 
   // Send Message
   const handleSendMessage = async (text: string) => {
       if (!activeChat || typeof activeChat !== 'string') return;
       
+      const now = Date.now();
+      const tempId = `local-${now}`;
+      const timeLabel = new Date(now).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+
+      // Optimistic message as pending
+      setMessages(prev => [...prev, {
+          id: tempId,
+          chatId: activeChat,
+          sender: 'me',
+          text,
+          timestamp: now,
+          timeLabel,
+          status: 'pending',
+      } as ChatMessage]);
+
+      // Also update last message info on conversation
+      setConversations(prev => prev.map(c => {
+        if (c.id !== activeChat) return c;
+        return {
+          ...c,
+          lastMessageText: text,
+          lastMessageStatus: 'pending',
+          lastMessageSender: 'me',
+          timestamp: now,
+          timeLabel,
+        };
+      }));
+
       try {
-          // UazAPI sendText expects number only for individual, or Group ID for groups.
-          // Usually passing the full ID (remoteJid) works best.
-          const number = activeChat; 
-          
-          await uazapiClient.messages.sendText(number, text);
-          
-          // Optimistic update
-          setMessages(prev => [...prev, {
-              id: Date.now().toString(),
-              sender: 'me',
-              text: text,
-              time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})
-          }]);
-          
+          // Send via Chatwoot Engine
+          const result = await chatwootClient.sendMessage(activeChat, text);
+
+          // Mapeia a resposta do Chatwoot para atualizar a UI
+          const newMessage = mapChatwootMessageToLocal(result);
+          const realId = newMessage.id || tempId;
+
+          setMessages(prev => prev.map(m =>
+            m.id === tempId
+              ? { ...m, id: realId, status: 'sent' }
+              : m
+          ));
+
+          setConversations(prev => prev.map(c => {
+            if (c.id !== activeChat) return c;
+            return {
+              ...c,
+              lastMessageText: text,
+              lastMessageStatus: 'sent',
+              timestamp: now,
+              timeLabel,
+            };
+          }));
       } catch (error) {
-          console.error('Failed to send message', error);
+          console.error('Failed to send message via Chatwoot', error);
+          // Mark optimistic message as failed
+          setMessages(prev => prev.map(m =>
+            m.id === tempId ? { ...m, status: 'failed' } : m
+          ));
+          setConversations(prev => prev.map(c => {
+            if (c.id !== activeChat) return c;
+            return {
+              ...c,
+              lastMessageStatus: 'failed',
+            };
+          }));
           alert('Erro ao enviar mensagem');
       }
   };
 
-  const toggleChannelVisibility = (channel: string) => {
+  const toggleChannelVisibility = useCallback((channel: string) => {
       setVisibleChannels(prev => 
           prev.includes(channel) 
               ? prev.filter(c => c !== channel) 
               : [...prev, channel]
       );
-  };
+  }, []);
 
   const handleCreateGroup = async (name: string, participants: string[]) => {
     setLoading(true);
     try {
         const result = await uazapiClient.groups.createGroup(name, participants);
-        console.log('Group created:', result);
         
         // Force sync to fetch the new group
         await uazapiClient.chats.syncChats();
@@ -519,18 +435,19 @@ export default function InboxPage() {
         const newGid = (result as any)?.gid || (result as any)?.id || (typeof result === 'string' ? result : null);
         
         if (newGid && !conversations.find(c => c.id === newGid)) {
-             const newGroupChat = {
+             const newGroupChat: ChatConversation = {
                 id: newGid,
                 name: name,
-                lastMsg: 'Grupo criado',
-                lastMsgStatus: 'SENT',
-                lastMsgSender: 'me',
-                time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+                lastMessageText: 'Grupo criado',
+                lastMessageStatus: 'sent',
+                lastMessageSender: 'me',
                 timestamp: Date.now(),
-                unread: 0,
+                timeLabel: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
+                unreadCount: 0,
                 online: false,
                 channel: 'whatsapp',
-                image: null
+                image: null,
+                isGroup: true,
             };
             setConversations(prev => [newGroupChat, ...prev]);
             setActiveChat(newGid);
@@ -550,40 +467,45 @@ export default function InboxPage() {
     if (!contact) return;
 
     // Check if conversation exists
-    const existing = conversations.find(c => 
-        c.id.includes(contact) || c.name.toLowerCase() === contact.toLowerCase()
+    const existing = conversations.find(c =>
+      c.id.includes(contact) || c.name.toLowerCase() === contact.toLowerCase()
     );
 
     if (existing) {
-        setActiveChat(existing.id);
+      setActiveChat(existing.id);
     } else {
-        // Create optimistic conversation
-        const newChatId = contact.includes('@') ? contact : `${contact}@s.whatsapp.net`;
-        const newChat = {
-            id: newChatId,
-            name: contact,
-            lastMsg: 'Nova conversa',
-            time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
-            unread: 0,
-            online: false,
-            channel: 'whatsapp',
-            image: null
-        };
-        setConversations([newChat, ...conversations]);
-        setActiveChat(newChatId);
+      // Create optimistic conversation
+      const newChatId = contact.includes('@') ? contact : `${contact}@s.whatsapp.net`;
+      const now = Date.now();
+      const newChat: ChatConversation = {
+        id: newChatId,
+        name: contact,
+        lastMessageText: 'Nova conversa',
+        lastMessageStatus: undefined,
+        lastMessageSender: 'me',
+        timestamp: now,
+        timeLabel: new Date(now).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        unreadCount: 0,
+        online: false,
+        channel: 'whatsapp',
+        image: null,
+        isGroup: false,
+      };
+      setConversations(prev => [newChat, ...prev]);
+      setActiveChat(newChatId);
     }
     setShowNewChat(false);
   };
 
   // Context Menu Actions
-  const handleContextMenu = (e: React.MouseEvent, chat: any) => {
+  const handleContextMenu = useCallback((e: React.MouseEvent, chat: ChatConversation) => {
     e.preventDefault();
     setContextMenu({
         x: e.clientX,
         y: e.clientY,
         chat
     });
-  };
+  }, []);
 
   const handleMenuAction = async (action: string, chat: any) => {
       const chatId = chat.id;
@@ -607,20 +529,19 @@ export default function InboxPage() {
                   // Local state + Re-sort
                   setConversations(prev => {
                       const updated = prev.map(c => c.id === chatId ? { ...c, pinned: !c.pinned } : c);
-                      // Re-sort
-                      return updated.sort((a: any, b: any) => {
+                      return updated.sort((a: ChatConversation, b: ChatConversation) => {
                         if (a.pinned && !b.pinned) return -1;
                         if (!a.pinned && b.pinned) return 1;
-                        return b.timestamp - a.timestamp;
+                        return (b.timestamp || 0) - (a.timestamp || 0);
                     });
                   });
                   break;
               case 'mark_unread':
                   // Local state only
-                  setConversations(prev => prev.map(c => c.id === chatId ? { ...c, unread: (c.unread || 0) + 1 } : c));
+                  setConversations(prev => prev.map(c => c.id === chatId ? { ...c, unreadCount: (c.unreadCount || 0) + 1 } : c));
                   break;
               case 'mark_read':
-                  setConversations(prev => prev.map(c => c.id === chatId ? { ...c, unread: 0 } : c));
+                  setConversations(prev => prev.map(c => c.id === chatId ? { ...c, unreadCount: 0 } : c));
                   break;
               case 'favorite':
                   // Local state
@@ -655,12 +576,31 @@ export default function InboxPage() {
       }
   };
 
-  const filteredConversations = conversations
-    .filter(c => visibleChannels.includes(c.channel))
-    .filter(c => 
-        c.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        c.id.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+  const filteredConversations = useMemo(
+    () =>
+      conversations
+        .filter(c => visibleChannels.includes(c.channel))
+        .filter(c =>
+          c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          c.id.toLowerCase().includes(searchQuery.toLowerCase())
+        ),
+    [conversations, visibleChannels, searchQuery]
+  );
+
+  const activeConversation = useMemo(
+    () => conversations.find(c => c.id === activeChat) || null,
+    [conversations, activeChat]
+  );
+
+  const totalMessages = messages.length;
+  const useVirtualization = totalMessages > 200;
+  const virtualStart = useVirtualization ? visibleRange.start : 0;
+  const virtualEnd = useVirtualization ? Math.min(visibleRange.end, totalMessages) : totalMessages;
+  const visibleMessages = messages.slice(virtualStart, virtualEnd);
+  const topSpacerHeight = useVirtualization ? virtualStart * ESTIMATED_MESSAGE_HEIGHT : 0;
+  const bottomSpacerHeight = useVirtualization
+    ? (totalMessages - virtualEnd) * ESTIMATED_MESSAGE_HEIGHT
+    : 0;
 
   const getChannelIcon = (channel: string) => {
       switch(channel) {
@@ -673,9 +613,17 @@ export default function InboxPage() {
   };
 
   const getStatusIcon = (status: any, customClass?: string) => {
-      const s = String(status).toUpperCase();
+      const s = String(status || '').toUpperCase();
       const baseClass = customClass || "h-3 w-3 text-zinc-400";
       
+      // Failed: X vermelho
+      if (['FAILED', 'ERROR'].includes(s)) {
+          return <XCircle className={cn(baseClass, !customClass && "text-red-500")} />;
+      }
+      // Pending: relógio cinza
+      if (['PENDING', '0'].includes(s)) {
+          return <Clock className={baseClass} />;
+      }
       // Blue check for Read/Seen
       if (['READ', 'SEEN', 'PLAYED', '3', '4'].includes(s)) {
           return <CheckCheck className={cn(baseClass, !customClass && "text-blue-500")} />;
@@ -684,7 +632,7 @@ export default function InboxPage() {
       if (['DELIVERED', 'RECEIVED', '2'].includes(s)) {
           return <CheckCheck className={baseClass} />;
       }
-      // Single check for Sent
+      // Single check for Sent (sent / default)
       return <Check className={baseClass} />;
   };
 
@@ -753,8 +701,8 @@ export default function InboxPage() {
                 <input 
                 type="text" 
                 placeholder="Buscar..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
                 className={cn(
                     "w-full border-none rounded-lg pl-8 pr-3 py-1.5 text-xs focus:ring-1 transition-all",
                     isDark 
@@ -766,7 +714,7 @@ export default function InboxPage() {
         </div>
 
         <div className="flex-1 overflow-y-auto">
-          {filteredConversations.map(chat => (
+                      {filteredConversations.map((chat: ChatConversation) => (
             <div 
               key={chat.id} 
               onClick={() => setActiveChat(chat.id)}
@@ -806,11 +754,11 @@ export default function InboxPage() {
                       {chat.favorite && <Heart className="h-2.5 w-2.5 fill-rose-500 text-rose-500" />}
                       {chat.muted && <BellOff className="h-2.5 w-2.5 text-zinc-400" />}
                   </div>
-                  <span className="text-[9px] text-zinc-500 whitespace-nowrap ml-1">{chat.time}</span>
+                  <span className="text-[9px] text-zinc-500 whitespace-nowrap ml-1">{chat.timeLabel}</span>
                 </div>
                 <div className="flex items-center gap-1 overflow-hidden">
-                    {chat.lastMsgSender === 'me' && getStatusIcon(chat.lastMsgStatus, "h-3 w-3 min-w-[12px]")}
-                    <p className="text-[10px] text-zinc-500 truncate">{chat.lastMsg}</p>
+                    {chat.lastMessageSender === 'me' && getStatusIcon(chat.lastMessageStatus, "h-3 w-3 min-w-[12px]")}
+                    <p className="text-[10px] text-zinc-500 truncate">{chat.lastMessageText}</p>
                 </div>
               </div>
             </div>
@@ -825,14 +773,14 @@ export default function InboxPage() {
             <div className={cn("h-14 px-4 border-b flex justify-between items-center backdrop-blur-md", isDark ? "border-zinc-800 bg-zinc-900/50" : "border-zinc-200 bg-white/80")}>
               <div className="flex items-center gap-3">
                 <CRMAvatar 
-                    initials={conversations.find(c => c.id === activeChat)?.name.slice(0,2).toUpperCase() || "?"} 
+                    initials={activeConversation?.name?.slice(0,2).toUpperCase() || "?"} 
                     size="sm" 
                     color={isDark ? "bg-zinc-700" : "bg-zinc-200 text-zinc-700"} 
-                    src={conversations.find(c => c.id === activeChat)?.image}
+                    src={activeConversation?.image}
                 />
                 <div>
                     <span className={cn("font-bold text-sm block", isDark ? "text-white" : "text-zinc-900")}>
-                        {conversations.find(c => c.id === activeChat)?.name || "Desconhecido"}
+                        {activeConversation?.name || "Desconhecido"}
                     </span>
                     <span className="text-[10px] text-emerald-500 flex items-center gap-1"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" /> Online</span>
                 </div>
@@ -843,7 +791,52 @@ export default function InboxPage() {
               </div>
             </div>
 
-            <div className="flex-1 p-4 space-y-4 overflow-y-auto text-xs">
+            <div
+              ref={messagesContainerRef}
+              className="flex-1 p-4 space-y-4 overflow-y-auto text-xs"
+              onScroll={(e) => {
+                const el = e.currentTarget;
+                const threshold = 48;
+                const atTop = el.scrollTop <= threshold;
+                const atBottom = el.scrollHeight - el.scrollTop - el.clientHeight <= threshold;
+                if (atBottom !== isNearBottom) setIsNearBottom(atBottom);
+
+                if (atTop && !isLoadingOlder && messages.length >= messageLimit) {
+                  setIsLoadingOlder(true);
+                  const prevScrollHeight = el.scrollHeight;
+                  setMessageLimit(prev => prev + 50);
+                  setTimeout(() => {
+                    const container = messagesContainerRef.current;
+                    if (!container) {
+                      setIsLoadingOlder(false);
+                      return;
+                    }
+                    const newScrollHeight = container.scrollHeight;
+                    container.scrollTop = newScrollHeight - prevScrollHeight;
+                    setIsLoadingOlder(false);
+                  }, 0);
+                }
+
+                const total = messages.length;
+                if (total > 200) {
+                  const firstVisibleIndex = Math.max(
+                    0,
+                    Math.floor(el.scrollTop / ESTIMATED_MESSAGE_HEIGHT) - VIRTUAL_OVERSCAN
+                  );
+                  const viewCount =
+                    Math.ceil(el.clientHeight / ESTIMATED_MESSAGE_HEIGHT) + VIRTUAL_OVERSCAN * 2;
+                  const lastVisibleIndex = Math.min(total, firstVisibleIndex + viewCount);
+                  setVisibleRange(prev => {
+                    if (prev.start === firstVisibleIndex && prev.end === lastVisibleIndex) return prev;
+                    return { start: firstVisibleIndex, end: lastVisibleIndex };
+                  });
+                } else {
+                  if (visibleRange.start !== 0 || visibleRange.end !== total) {
+                    setVisibleRange({ start: 0, end: total });
+                  }
+                }
+              }}
+            >
               <div className="flex justify-center">
                 <span className={cn("text-[10px] px-2 py-0.5 rounded-full border opacity-70", isDark ? "bg-zinc-900 border-zinc-800" : "bg-zinc-100 border-zinc-200")}>Hoje</span>
               </div>
@@ -854,35 +847,53 @@ export default function InboxPage() {
                   </div>
               )}
 
-              {messages.map((msg, index) => (
-                  <div key={msg.id || index} className={cn("flex gap-2", msg.sender === 'me' ? "flex-row-reverse" : "")} id={index === messages.length - 1 ? "last-message" : undefined}>
-                     {msg.sender !== 'me' && (
-                         <CRMAvatar 
-                            initials={conversations.find(c => c.id === activeChat)?.name.slice(0,2).toUpperCase() || "?"} 
-                            size="sm" 
-                            color={isDark ? "bg-zinc-700" : "bg-zinc-200 text-zinc-600"} 
-                            src={conversations.find(c => c.id === activeChat)?.image}
-                         />
-                     )}
-                     <div className={cn(
-                         "px-3 py-2 rounded-xl max-w-sm shadow-sm", 
-                         msg.sender === 'me' 
-                            ? `bg-${themeColor}-600 text-white rounded-tr-none`
-                            : (isDark ? "bg-zinc-800 text-zinc-200 rounded-tl-none" : "bg-white text-zinc-800 border border-zinc-100 rounded-tl-none")
-                     )}>
-                        {msg.sender !== 'me' && String(activeChat).endsWith('@g.us') && (
-                            <p className={cn("text-[10px] font-bold mb-0.5 opacity-80", isDark ? "text-zinc-400" : "text-zinc-500")}>
-                                {(msg.senderName && msg.senderName.trim() !== '') ? msg.senderName : (msg.senderId ? msg.senderId.split('@')[0] : "Membro")}
-                            </p>
-                        )}
-                        <p>{msg.text}</p>
-                        <div className={cn("flex items-center gap-1 mt-1", msg.sender === 'me' ? "justify-end" : "")}>
-                          <span className={cn("text-[9px]", msg.sender === 'me' ? `text-${themeColor}-100 opacity-80` : "text-zinc-500")}>{msg.time}</span>
-                          {msg.sender === 'me' && getStatusIcon(msg.status, cn("h-3 w-3", `text-${themeColor}-100 opacity-80`))}
+              {messages.length > 0 && (
+                  <>
+                    {topSpacerHeight > 0 && (
+                      <div style={{ height: topSpacerHeight }} />
+                    )}
+                    {visibleMessages.map((msg, index) => {
+                      const globalIndex = virtualStart + index;
+                      const isLast = globalIndex === totalMessages - 1;
+                      return (
+                        <div
+                          key={msg.id || globalIndex}
+                          className={cn("flex gap-2", msg.sender === 'me' ? "flex-row-reverse" : "")}
+                          id={isLast ? "last-message" : undefined}
+                        >
+                           {msg.sender !== 'me' && (
+                               <CRMAvatar 
+                                  initials={activeConversation?.name?.slice(0,2).toUpperCase() || "?"} 
+                                  size="sm" 
+                                  color={isDark ? "bg-zinc-700" : "bg-zinc-200 text-zinc-600"} 
+                                  src={activeConversation?.image}
+                               />
+                           )}
+                           <div className={cn(
+                               "px-3 py-2 rounded-xl max-w-sm shadow-sm", 
+                               msg.sender === 'me' 
+                                  ? `bg-${themeColor}-600 text-white rounded-tr-none`
+                                  : (isDark ? "bg-zinc-800 text-zinc-200 rounded-tl-none" : "bg-white text-zinc-800 border border-zinc-100 rounded-tl-none")
+                           )}>
+                              {msg.sender !== 'me' && String(activeChat).endsWith('@g.us') && (
+                                  <p className={cn("text-[10px] font-bold mb-0.5 opacity-80", isDark ? "text-zinc-400" : "text-zinc-500")}>
+                                      {(msg.senderName && msg.senderName.trim() !== '') ? msg.senderName : (msg.senderId ? msg.senderId.split('@')[0] : "Membro")}
+                                  </p>
+                              )}
+                              <p>{msg.text}</p>
+                              <div className={cn("flex items-center gap-1 mt-1", msg.sender === 'me' ? "justify-end" : "")}>
+                                <span className={cn("text-[9px]", msg.sender === 'me' ? `text-${themeColor}-100 opacity-80` : "text-zinc-500")}>{msg.timeLabel}</span>
+                                {msg.sender === 'me' && getStatusIcon(msg.status, cn("h-3 w-3", `text-${themeColor}-100 opacity-80`))}
+                              </div>
+                           </div>
                         </div>
-                     </div>
-                  </div>
-              ))}
+                      );
+                    })}
+                    {bottomSpacerHeight > 0 && (
+                      <div style={{ height: bottomSpacerHeight }} />
+                    )}
+                  </>
+              )}
             </div>
 
             <div className={cn("p-3 border-t", isDark ? "bg-zinc-900/50 border-zinc-800" : "bg-white border-zinc-200")}>
@@ -891,13 +902,17 @@ export default function InboxPage() {
                  <input 
                    type="text" 
                    placeholder="Mensagem..." 
-                   onKeyDown={(e) => {
-                       if (e.key === 'Enter') {
-                           const target = e.target as HTMLInputElement;
-                           handleSendMessage(target.value);
-                           target.value = '';
-                       }
-                   }}
+                  value={messageInput}
+                  onChange={(e) => setMessageInput(e.target.value)}
+                  onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                          e.preventDefault();
+                          const value = messageInput.trim();
+                          if (!value) return;
+                          handleSendMessage(value);
+                          setMessageInput('');
+                      }
+                  }}
                    className={cn(
                      "flex-1 border rounded-lg px-3 py-2 text-xs transition-all focus:outline-none focus:ring-1",
                      isDark 
@@ -910,11 +925,10 @@ export default function InboxPage() {
                     themeColor={themeColor} 
                     isDark={isDark}
                     onClick={() => {
-                        const input = document.querySelector('input[placeholder="Mensagem..."]') as HTMLInputElement;
-                        if (input && input.value) {
-                            handleSendMessage(input.value);
-                            input.value = '';
-                        }
+                        const value = messageInput.trim();
+                        if (!value) return;
+                        handleSendMessage(value);
+                        setMessageInput('');
                     }}
                 >
                     <Send className="h-3.5 w-3.5 ml-0.5" />
@@ -942,11 +956,11 @@ export default function InboxPage() {
                     {/* Header Profile */}
                     <div className="text-center">
                         <CRMAvatar 
-                            initials={conversations.find(c => c.id === activeChat)?.name.slice(0,2).toUpperCase() || "?"} 
+                            initials={activeConversation?.name?.slice(0,2).toUpperCase() || "?"} 
                             size="xl" 
                             themeColor={themeColor} 
                             className="mx-auto mb-2" 
-                            src={conversations.find(c => c.id === activeChat)?.image}
+                            src={activeConversation?.image}
                         />
                         <div className="flex justify-center items-center gap-2 mb-2">
                             <input 
@@ -1021,7 +1035,7 @@ export default function InboxPage() {
                             <div className="flex items-center gap-2 text-xs">
                                 <Phone className="h-3.5 w-3.5 text-zinc-500" />
                                 <span className={isDark ? "text-zinc-300" : "text-zinc-700"}>
-                                    {conversations.find(c => c.id === activeChat)?.id.split('@')[0] || "-"}
+                                    {activeConversation?.id.split('@')[0] || "-"}
                                 </span>
                             </div>
                         </div>
