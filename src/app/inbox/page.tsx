@@ -40,8 +40,8 @@ import { CreateGroupDialog } from '@/components/features/inbox/create-group-dial
 import { SimpleInputModal } from '@/components/modals/simple-input-modal';
 
 import { ChatContextMenu } from '@/components/features/inbox/chat-context-menu';
-import { chatwootClient } from '@/lib/api/chatwoot-client'; // New Client
-// import { uazapiClient } from '@/lib/api/uazapi-client'; // Deprecated for Inbox
+import { chatwootClient } from '@/lib/api/chatwoot-client'; // Chatwoot (engine do inbox)
+import { uazapiClient } from '@/lib/api/uazapi-client'; // Evolution/UazAPI (grupos, ações avançadas)
 import { mapChatwootConversationToLocal, mapChatwootMessageToLocal } from '@/lib/mappers/chatwoot-mapper';
 import type { ChatConversation, ChatMessage } from '@/types/chat';
 
